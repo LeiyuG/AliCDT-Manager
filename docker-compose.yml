@@ -1,10 +1,10 @@
 services:
   alicdt-manager:
-    image: ghcr.io/lillinlin/alicdt-manager:latest
+    image: ${IMAGE_NAME:-ghcr.io/lillinlin/alicdt-manager:latest}
     container_name: alicdt-manager
     restart: always
     ports:
-      - "127.0.0.1:8000:8000"
+      - "${BIND_ADDRESS:-0.0.0.0}:${PORT:-8000}:8000"
     volumes:
       - ./data:/app/data
     env_file:

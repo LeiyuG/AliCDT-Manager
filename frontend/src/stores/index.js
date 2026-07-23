@@ -117,8 +117,8 @@ export const useStore = defineStore('main', () => {
     await fetchLogs()
   }
 
-  async function renameInstance(instanceId, name) {
-    await api.patch(`/instances/${instanceId}/rename`, { name })
+  async function updateInstanceRemark(instanceId, remark) {
+    await api.patch(`/instances/${instanceId}/remark`, { remark })
     await fetchInstances()
   }
 
@@ -127,6 +127,6 @@ export const useStore = defineStore('main', () => {
     login, fetchInstances, fetchAccounts, fetchLogs, fetchSettings,
     syncAll, syncSingleInstance, controlInstance, releaseInstance, getBilling,
     createAccount, updateAccount, deleteAccount, saveSettings, clearLogs,
-    renameInstance,
+    updateInstanceRemark,
   }
 })

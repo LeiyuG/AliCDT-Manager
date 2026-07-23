@@ -83,8 +83,8 @@ class SettingUpdate(BaseModel):
     value: str
 
 
-class RenameRequest(BaseModel):
-    name: str
+class RemarkRequest(BaseModel):
+    remark: Optional[str] = None
 
 
 @app.get("/api/auth/initialized")
@@ -201,13 +201,16 @@ async def sync_single_instance(instance_id: str, user=Depends(get_current_user),
     return {"message": "同步完成", "status": status, "traffic_gb": traffic_gb, "percent": percent}
 
 
-@app.patch("/api/instances/{instance_id}/rename")
-async def rename_instance(instance_id: str, data: RenameRequest, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+@app.patch("/api/instances/{instance_id}/remark")
+async def update_instance_remark(instance_id: str, data: RemarkRequest, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Instance).where(Instance.instance_id == instance_id))
     inst = result.scalar_one_or_none()
     if not inst:
         raise HTTPException(status_code=404)
-    inst.instance_name = data.name
+    remark = (data.remark or "").strip()
+    if len(remark) > 100:
+        raise HTTPException(status_code=400, detail="备注不能超过 100 个字符")
+    inst.remark = remark or None
     await db.commit()
     return {"message": "更新成功"}
 

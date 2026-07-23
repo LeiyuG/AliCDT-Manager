@@ -27,16 +27,15 @@ INSTALL_DIR="/app/alicdt-manager"
 mkdir -p "$INSTALL_DIR/data"
 cd "$INSTALL_DIR"
 
-# 生成随机密钥
-echo "SECRET_KEY=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | head -c 48)" > .env
+# 生成随机密钥并配置直接访问端口
+{
+    echo "SECRET_KEY=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | head -c 48)"
+    echo "BIND_ADDRESS=0.0.0.0"
+    echo "PORT=${PORT}"
+} > .env
 
 # 下载 docker-compose.yml
 curl -fsSL https://raw.githubusercontent.com/lillinlin/AliCDT-Manager/main/docker-compose.yml -o docker-compose.yml
-
-# 替换端口（如果用户改了默认值）
-if [ "$PORT" != "8000" ]; then
-    sed -i "s/127.0.0.1:8000:8000/127.0.0.1:${PORT}:8000/" docker-compose.yml
-fi
 
 # 启动
 docker compose pull
@@ -45,5 +44,8 @@ docker compose up -d
 echo -e "${GREEN}=============================="
 echo "   安装完成！"
 echo "   服务端口: ${PORT}"
+echo "   访问地址: http://服务器IP:${PORT}"
+echo "   默认可直接访问，无需配置 Nginx 反向代理"
 echo "   首次访问请设置管理员账号"
+echo -e "${YELLOW}   请在防火墙/安全组中仅向可信来源开放该端口${NC}"
 echo -e "==============================${NC}"

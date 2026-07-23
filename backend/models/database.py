@@ -32,6 +32,7 @@ class Instance(Base):
     account_id = Column(Integer, nullable=False)
     instance_id = Column(String, nullable=False, unique=True)
     instance_name = Column(String, nullable=True)
+    remark = Column(String, nullable=True)
     region_id = Column(String, nullable=True)
     status = Column(String, default="Unknown")
     public_ip = Column(String, nullable=True)
@@ -73,6 +74,11 @@ AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=F
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # create_all 不会为已有 SQLite 表补列，升级旧部署时需要轻量迁移。
+        columns = await conn.exec_driver_sql("PRAGMA table_info(instances)")
+        column_names = {row[1] for row in columns.fetchall()}
+        if "remark" not in column_names:
+            await conn.exec_driver_sql("ALTER TABLE instances ADD COLUMN remark VARCHAR")
 
 async def get_db():
     async with AsyncSessionLocal() as session:

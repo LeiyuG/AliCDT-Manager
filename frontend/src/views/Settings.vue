@@ -35,6 +35,7 @@
         <div>• 流量熔断自动停机</div>
         <div>• 抢占式实例被回收并拉起</div>
         <div>• 定时开关机执行</div>
+        <div>• 日报优先显示本地备注，并始终保留实例 ID</div>
         <div v-if="form.tg_daily_report === '1'" class="text-accent">• 每日 00:00 流量汇报（已开启）</div>
         <div v-else class="text-text-muted">• 每日流量汇报（已关闭）</div>
       </div>

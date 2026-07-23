@@ -1,4 +1,5 @@
 from datetime import datetime
+from html import escape
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
@@ -285,9 +286,11 @@ async def _do_daily_report():
         if inst:
             bar_filled = int((inst.traffic_percent or 0) / 10)
             bar = "█" * bar_filled + "░" * (10 - bar_filled)
-            display_name = inst.instance_name or account.name
+            display_name = escape(inst.remark or inst.instance_id)
+            instance_id_line = f"  🆔 实例 ID: {escape(inst.instance_id)}\n" if inst.remark else ""
             block = (
                 f"{status_icon} <b>{display_name}</b>\n"
+                f"{instance_id_line}"
                 f"  📡 流量: {inst.traffic_used_gb:.2f}GB / {account.traffic_limit_gb}GB\n"
                 f"  [{bar}] {inst.traffic_percent:.1f}%  熔断: {account.threshold_percent}%\n"
                 f"  🖥 状态: {inst.status}  地域: {inst.region_id or '—'}"

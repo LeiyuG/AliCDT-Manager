@@ -2,31 +2,74 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  color-scheme: light;
+  --color-background: 248 250 252;
+  --color-surface: 255 255 255;
+  --color-surface-hover: 241 245 249;
+  --color-card: 255 255 255;
+  --color-border: 203 213 225;
+  --color-accent: 79 70 229;
+  --color-accent-light: 99 102 241;
+  --color-success: 22 163 74;
+  --color-warning: 217 119 6;
+  --color-warning-dark: 180 83 9;
+  --color-danger: 220 38 38;
+  --color-muted: 148 163 184;
+  --color-text: 15 23 42;
+  --color-text-muted: 71 85 105;
+  --glass-background: rgb(255 255 255 / 0.82);
+  --glass-border: rgb(15 23 42 / 0.08);
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.06), 0 8px 24px rgb(15 23 42 / 0.08);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --color-background: 10 10 15;
+  --color-surface: 17 17 24;
+  --color-surface-hover: 30 30 46;
+  --color-card: 22 22 31;
+  --color-border: 30 30 46;
+  --color-accent: 99 102 241;
+  --color-accent-light: 129 140 248;
+  --color-success: 34 197 94;
+  --color-warning: 245 158 11;
+  --color-warning-dark: 245 158 11;
+  --color-danger: 239 68 68;
+  --color-muted: 75 85 99;
+  --color-text: 226 232 240;
+  --color-text-muted: 148 163 184;
+  --glass-background: rgb(22 22 31 / 0.8);
+  --glass-border: rgb(255 255 255 / 0.06);
+  --shadow-card: 0 0 0 1px rgb(255 255 255 / 0.03), 0 4px 24px rgb(0 0 0 / 0.4);
+}
+
 * { box-sizing: border-box; }
 
 body {
-  background: #0a0a0f;
-  color: #e2e8f0;
+  background: rgb(var(--color-background));
+  color: rgb(var(--color-text));
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #1e1e2e; border-radius: 2px; }
+::-webkit-scrollbar-thumb { background: rgb(var(--color-border)); border-radius: 2px; }
 
 .glass {
-  background: rgba(22, 22, 31, 0.8);
+  background: var(--glass-background);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255,255,255,0.06);
+  border: 1px solid var(--glass-border);
 }
 
 .card {
-  background: #16161f;
-  border: 1px solid #1e1e2e;
+  background: rgb(var(--color-card));
+  border: 1px solid rgb(var(--color-border));
   border-radius: 1rem;
-  box-shadow: 0 0 0 1px rgba(255,255,255,0.03), 0 4px 24px rgba(0,0,0,0.4);
+  box-shadow: var(--shadow-card);
 }
 
 .btn-primary {
@@ -35,7 +78,7 @@ body {
 }
 
 .btn-ghost {
-  @apply text-text-muted hover:text-text hover:bg-white/5 px-3 py-2 rounded-lg text-sm transition-all duration-200;
+  @apply text-text-muted hover:text-text hover:bg-surface-hover px-3 py-2 rounded-lg text-sm transition-all duration-200;
 }
 
 .btn-danger {

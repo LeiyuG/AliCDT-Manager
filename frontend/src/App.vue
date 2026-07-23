@@ -1,5 +1,16 @@
 <template>
   <div class="min-h-screen bg-background text-text font-sans antialiased">
+    <button
+      v-if="isLogin"
+      type="button"
+      class="fixed top-4 right-4 z-50 h-10 px-3 rounded-xl bg-surface/90 border border-border shadow-sm backdrop-blur-md text-sm text-text hover:border-accent/50 hover:text-accent transition-colors flex items-center gap-2"
+      :title="theme === 'light' ? '切换到深色主题' : '切换到浅色主题'"
+      @click="toggleTheme"
+    >
+      <span aria-hidden="true">{{ theme === 'light' ? '🌙' : '☀️' }}</span>
+      <span class="hidden sm:inline">{{ theme === 'light' ? '深色' : '浅色' }}</span>
+    </button>
+
     <!-- 登录页 -->
     <div v-if="isLogin">
       <router-view v-slot="{ Component }">
@@ -16,7 +27,7 @@
         <!-- Logo区 -->
         <div class="h-20 flex items-center px-6 border-b border-border/50">
           <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-2xl bg-accent/10 flex items-center justify-center border border-accent/20 shadow-[0_0_15px_rgba(var(--accent),0.2)]">
+            <div class="w-10 h-10 rounded-2xl bg-accent/10 flex items-center justify-center border border-accent/20 shadow-glow">
               <span class="text-xl animate-pulse">🛡️</span>
             </div>
             <div>
@@ -50,7 +61,12 @@
         </nav>
 
         <!-- 底部操作 -->
-        <div class="p-4 border-t border-border/50">
+        <div class="p-4 border-t border-border/50 space-y-1">
+          <button @click="toggleTheme"
+            class="w-full flex items-center justify-center gap-2 px-4 h-11 rounded-xl text-sm font-medium text-text-muted hover:text-accent hover:bg-accent/10 transition-colors duration-200">
+            <span>{{ theme === 'light' ? '🌙' : '☀️' }}</span>
+            <span>{{ theme === 'light' ? '切换深色主题' : '切换浅色主题' }}</span>
+          </button>
           <button @click="logout"
             class="w-full flex items-center justify-center gap-2 px-4 h-11 rounded-xl text-sm font-medium text-text-muted hover:text-danger hover:bg-danger/10 transition-colors duration-200 group">
             <span class="group-hover:-translate-x-1 transition-transform duration-200">🚪</span>
@@ -75,11 +91,14 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 const route = useRoute()
 const router = useRouter()
+const theme = ref(localStorage.getItem('theme') === 'dark' ? 'dark' : 'light')
+
+document.documentElement.dataset.theme = theme.value
 
 const isLogin = computed(() => route.path === '/login')
 
@@ -102,6 +121,12 @@ const activeIndex = computed(() => {
 
 function navigate(path) {
   router.push(path)
+}
+
+function toggleTheme() {
+  theme.value = theme.value === 'light' ? 'dark' : 'light'
+  document.documentElement.dataset.theme = theme.value
+  localStorage.setItem('theme', theme.value)
 }
 
 function logout() {

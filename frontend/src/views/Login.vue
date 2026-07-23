@@ -2,7 +2,7 @@
   <div class="min-h-screen flex items-center justify-center relative overflow-hidden">
     <div class="absolute inset-0 pointer-events-none">
       <div class="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-accent/10 rounded-full blur-3xl"></div>
-      <div class="absolute bottom-1/4 left-1/3 w-64 h-64 bg-indigo-900/20 rounded-full blur-3xl"></div>
+      <div class="absolute bottom-1/4 left-1/3 w-64 h-64 bg-accent/10 rounded-full blur-3xl"></div>
     </div>
 
     <div class="card p-8 w-full max-w-sm relative fade-in">

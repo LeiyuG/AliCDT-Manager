@@ -12,6 +12,8 @@
 - 定时开关机计划
 - Telegram 告警通知
 - 账单统计（待还款金额，国际站准确）
+- 浅色/深色主题切换
+- 实例本地备注，日报始终可识别实例 ID
 
 ## 🔑 所需 RAM 权限
 
@@ -31,10 +33,9 @@ AliyunBSSFullAccess
 bash <(curl -fsSL https://raw.githubusercontent.com/lillinlin/AliCDT-Manager/main/install.sh)
 ```
 
-docker-compose.yml 默认端口为
-ports:
-     - "127.0.0.1:8000:8000"
-在安装完成需要配置 Nginx 反代通过域名访问
+安装完成后直接访问 `http://服务器IP:8000`，默认不需要配置 Nginx 反向代理。安装时可以输入其他端口。
+
+> 请在云安全组或系统防火墙中仅向可信来源开放管理端口。若通过公网使用，仍建议配置 HTTPS。
 
 
 ## 🛠 手动部署
@@ -52,15 +53,48 @@ curl -fsSL https://raw.githubusercontent.com/lillinlin/AliCDT-Manager/main/docke
 docker compose up -d
 ```
 
+### 部署自行修改的源码
+
+仓库默认使用官方预构建镜像；修改源码后需要构建自己的镜像：
+
+```bash
+cd frontend
+npm install
+npm run build
+cd ..
+docker build -t alicdt-manager:custom .
+echo "IMAGE_NAME=alicdt-manager:custom" >> .env
+docker compose up -d
+```
+
+默认监听所有网卡的 `8000` 端口，可直接访问：
+
+```text
+http://服务器IP:8000
+```
+
+如需更换端口，在 `.env` 中加入 `PORT=8080`。如需改回仅允许本机访问（用于 Nginx/Caddy 反代），加入 `BIND_ADDRESS=127.0.0.1`，然后执行：
+
+```bash
+docker compose up -d
+```
+
+已有部署若仍使用旧版 `127.0.0.1:8000:8000` 映射，请重新下载本仓库的 `docker-compose.yml`，或手动将端口映射改为：
+
+```yaml
+ports:
+  - "0.0.0.0:8000:8000"
+```
+
 ## ✨ 界面截图
 ![1](READMEimages/1.png)  
 ![2](READMEimages/2.png)  
 ![3](READMEimages/3.png)  
 ![5](READMEimages/5.png)  
 
-## Nginx Cloudflare 配置示例
+## 可选：Nginx / Cloudflare 配置示例
 
-请手动填写 #端口 #域名 #Pem证书路径 #Key证书路径
+直接通过端口访问时不需要本节。若需要域名和 HTTPS，请先在 `.env` 中设置 `BIND_ADDRESS=127.0.0.1`，再按需填写端口、域名和证书路径。
 
 ```bash
 server {

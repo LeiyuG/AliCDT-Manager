@@ -14,17 +14,17 @@
           class="flex items-center gap-2 cursor-pointer group/edit"
           @click="startEditName">
           <h3 class="text-base font-semibold text-text truncate transition-colors group-hover/edit:text-accent">
-            {{ instance.instance_name || instance.instance_id }}
+            {{ instance.remark || instance.instance_name || instance.instance_id }}
           </h3>
           <span class="opacity-0 group-hover/edit:opacity-100 text-text-muted transition-opacity text-xs bg-surface-hover px-1.5 py-0.5 rounded-md border border-border whitespace-nowrap flex-shrink-0">
-            编辑
+            {{ instance.remark ? '编辑备注' : '添加备注' }}
           </span>
         </div>
         <div v-else class="flex items-center gap-2">
           <input v-model="newName" :disabled="isSavingName"
             class="input py-1 px-2 text-sm flex-1 bg-surface border-accent/50 focus:ring-2 focus:ring-accent/20 rounded-lg transition-all disabled:opacity-50"
             @keyup.enter="saveName" @keyup.escape="editingName=false" autofocus
-            placeholder="输入新名称" />
+            placeholder="输入本地备注，留空可清除" />
           <div class="flex gap-1 flex-shrink-0">
             <button @click="saveName" :disabled="isSavingName"
               class="w-7 h-7 flex items-center justify-center rounded-md bg-success/10 text-success hover:bg-success/20 transition-colors disabled:opacity-50">
@@ -37,7 +37,10 @@
             </button>
           </div>
         </div>
-        <div class="text-xs text-text-muted font-mono mt-1 truncate opacity-70">{{ instance.instance_id }}</div>
+        <div class="text-xs text-text-muted font-mono mt-1 truncate opacity-80">ID: {{ instance.instance_id }}</div>
+        <div v-if="instance.instance_name" class="text-[11px] text-text-muted mt-1 truncate opacity-60">
+          阿里云名称: {{ instance.instance_name }}
+        </div>
       </div>
 
       <div class="flex flex-col items-end gap-1.5 flex-shrink-0">
@@ -241,22 +244,22 @@ const trafficColor = computed(() => trafficPct.value >= 90 ? 'text-danger' : tra
 const trafficBarColor = computed(() => trafficPct.value >= 90 ? 'bg-danger' : trafficPct.value >= 75 ? 'bg-warning' : 'bg-success')
 
 function startEditName() {
-  newName.value = props.instance.instance_name || ''
+  newName.value = props.instance.remark || ''
   editingName.value = true
 }
 
 async function saveName() {
   const val = newName.value.trim()
-  if (!val || val === props.instance.instance_name) {
+  if (val === (props.instance.remark || '')) {
     editingName.value = false
     return
   }
   isSavingName.value = true
   try {
-    await store.renameInstance(props.instance.instance_id, val)
+    await store.updateInstanceRemark(props.instance.instance_id, val)
     editingName.value = false
   } catch (error) {
-    alert('名称修改失败: ' + (error.message || '请检查后端日志或网络状态'))
+    alert('备注修改失败: ' + (error.response?.data?.detail || error.message || '请检查后端日志或网络状态'))
   } finally {
     isSavingName.value = false
   }
