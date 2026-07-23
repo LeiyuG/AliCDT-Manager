@@ -30,7 +30,7 @@ AliyunBSSFullAccess
 ## 🚀 一键安装
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/lillinlin/AliCDT-Manager/main/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/LeiyuG/AliCDT-Manager/main/install.sh)
 ```
 
 安装完成后直接访问 `http://服务器IP:8000`，默认不需要配置 Nginx 反向代理。安装时可以输入其他端口。
@@ -47,7 +47,7 @@ mkdir -p /app/alicdt-manager/data && cd /app/alicdt-manager
 echo "SECRET_KEY=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | head -c 48)" > .env
 ```
 ```bash
-curl -fsSL https://raw.githubusercontent.com/lillinlin/AliCDT-Manager/main/docker-compose.yml -o docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/LeiyuG/AliCDT-Manager/main/docker-compose.yml -o docker-compose.yml
 ```
 ```bash
 docker compose up -d
@@ -138,7 +138,3 @@ server {
 
 - Backend: Python + FastAPI + APScheduler + SQLite
 - Frontend: Vue 3 + TailwindCSS
-
-
-## Nodeseek
-https://www.nodeseek.com/post-737919-1
