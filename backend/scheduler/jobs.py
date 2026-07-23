@@ -10,6 +10,20 @@ import httpx
 
 scheduler = AsyncIOScheduler(timezone="Asia/Shanghai")
 
+DEFAULT_KEEP_ALIVE_INTERVAL_MINUTES = 5
+MIN_KEEP_ALIVE_INTERVAL_MINUTES = 1
+MAX_KEEP_ALIVE_INTERVAL_MINUTES = 1440
+
+
+def parse_keep_alive_interval(value) -> int:
+    try:
+        interval = int(value)
+    except (TypeError, ValueError):
+        return DEFAULT_KEEP_ALIVE_INTERVAL_MINUTES
+    if not MIN_KEEP_ALIVE_INTERVAL_MINUTES <= interval <= MAX_KEEP_ALIVE_INTERVAL_MINUTES:
+        return DEFAULT_KEEP_ALIVE_INTERVAL_MINUTES
+    return interval
+
 
 async def add_important_log(category: str, message: str):
     async with AsyncSessionLocal() as db:
@@ -325,9 +339,28 @@ async def daily_traffic_report():
     await _do_daily_report()
 
 
-def start_scheduler():
+async def configure_keep_alive_job(interval_minutes=None):
+    if interval_minutes is None:
+        configured_value = await get_setting(
+            "keep_alive_interval_minutes",
+            str(DEFAULT_KEEP_ALIVE_INTERVAL_MINUTES),
+        )
+        interval_minutes = parse_keep_alive_interval(configured_value)
+    else:
+        interval_minutes = parse_keep_alive_interval(interval_minutes)
+
+    scheduler.add_job(
+        keep_alive_check,
+        IntervalTrigger(minutes=interval_minutes),
+        id="keep_alive",
+        replace_existing=True,
+    )
+    return interval_minutes
+
+
+async def start_scheduler():
     scheduler.add_job(traffic_check, IntervalTrigger(minutes=10), id="traffic_check", replace_existing=True)
-    scheduler.add_job(keep_alive_check, IntervalTrigger(minutes=1), id="keep_alive", replace_existing=True)
+    await configure_keep_alive_job()
     scheduler.add_job(scheduled_power, IntervalTrigger(minutes=1), id="scheduled_power", replace_existing=True)
     scheduler.add_job(sync_instances, IntervalTrigger(minutes=2), id="sync_instances", replace_existing=True)
     scheduler.add_job(daily_traffic_report, CronTrigger(hour=0, minute=0), id="daily_report", replace_existing=True)

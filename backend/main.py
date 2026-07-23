@@ -14,7 +14,15 @@ from passlib.context import CryptContext
 
 from models.database import init_db, get_db, Account, Instance, Log, Settings
 from core.aliyun import AliyunClient
-from scheduler.jobs import start_scheduler, sync_instances, traffic_check, add_important_log
+from scheduler.jobs import (
+    start_scheduler,
+    sync_instances,
+    traffic_check,
+    add_important_log,
+    configure_keep_alive_job,
+    MIN_KEEP_ALIVE_INTERVAL_MINUTES,
+    MAX_KEEP_ALIVE_INTERVAL_MINUTES,
+)
 
 SECRET_KEY = os.environ.get("SECRET_KEY", "fallback-change-me")
 ALGORITHM = "HS256"
@@ -54,7 +62,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 @app.on_event("startup")
 async def startup():
     await init_db()
-    start_scheduler()
+    await start_scheduler()
 
 
 class LoginRequest(BaseModel):
@@ -284,15 +292,34 @@ async def get_settings(user=Depends(get_current_user), db: AsyncSession = Depend
 
 @app.post("/api/settings")
 async def update_settings(items: List[SettingUpdate], user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    keep_alive_interval = None
     for item in items:
+        value = item.value
+        if item.key == "keep_alive_interval_minutes":
+            try:
+                keep_alive_interval = int(value)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="保活检查间隔必须是整数分钟")
+            if not MIN_KEEP_ALIVE_INTERVAL_MINUTES <= keep_alive_interval <= MAX_KEEP_ALIVE_INTERVAL_MINUTES:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"保活检查间隔必须在 {MIN_KEEP_ALIVE_INTERVAL_MINUTES}～{MAX_KEEP_ALIVE_INTERVAL_MINUTES} 分钟之间",
+                )
+            value = str(keep_alive_interval)
+
         result = await db.execute(select(Settings).where(Settings.key == item.key))
         row = result.scalar_one_or_none()
         if row:
-            row.value = item.value
+            row.value = value
         else:
-            db.add(Settings(key=item.key, value=item.value))
+            db.add(Settings(key=item.key, value=value))
     await db.commit()
-    return {"message": "保存成功"}
+    if keep_alive_interval is not None:
+        await configure_keep_alive_job(keep_alive_interval)
+    return {
+        "message": "保存成功",
+        "keep_alive_interval_minutes": keep_alive_interval,
+    }
 
 
 @app.post("/api/settings/test-tg")

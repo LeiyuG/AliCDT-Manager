@@ -2,6 +2,53 @@
   <div class="p-6 space-y-6 fade-in">
     <h1 class="text-xl font-semibold text-text">系统设置</h1>
 
+    <!-- 保活策略 -->
+    <div class="card p-5 space-y-4">
+      <div class="flex items-center gap-2">
+        <span class="text-lg">⏱️</span>
+        <div>
+          <h2 class="font-medium text-text text-sm">保活检查间隔</h2>
+          <p class="text-xs text-text-muted mt-0.5">设置多久检查一次已开启保活的实例，保存后立即生效</p>
+        </div>
+      </div>
+
+      <div>
+        <label class="text-xs text-text-muted mb-1.5 block">检查间隔（分钟）</label>
+        <input
+          v-model="form.keep_alive_interval_minutes"
+          type="number"
+          min="1"
+          max="1440"
+          step="1"
+          class="input"
+          placeholder="5"
+        />
+        <div class="text-[11px] text-text-muted mt-1.5">
+          可设置 1～1440 分钟。建议使用 5～15 分钟，间隔越短，调用阿里云接口越频繁。
+        </div>
+      </div>
+
+      <div class="flex gap-2 flex-wrap">
+        <button
+          v-for="minutes in [5, 10, 15, 30]"
+          :key="minutes"
+          type="button"
+          class="px-3 py-1.5 rounded-lg text-xs border transition-colors"
+          :class="form.keep_alive_interval_minutes === String(minutes)
+            ? 'border-accent bg-accent/10 text-accent'
+            : 'border-border bg-surface text-text-muted hover:text-text'"
+          @click="form.keep_alive_interval_minutes = String(minutes)"
+        >
+          {{ minutes }} 分钟
+        </button>
+      </div>
+
+      <button @click="save" :disabled="saving" class="btn-primary flex items-center gap-2">
+        <span v-if="saving" class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+        {{ saving ? '保存中...' : '保存保活设置' }}
+      </button>
+    </div>
+
     <!-- TG 通知 -->
     <div class="card p-5 space-y-4">
       <div class="flex items-center gap-2 mb-2">
@@ -90,6 +137,7 @@ const reportTesting = ref(false)
 const msg = ref('')
 const newPassword = ref('')
 const form = ref({
+  keep_alive_interval_minutes: '5',
   tg_bot_token: '',
   tg_chat_id: '',
   tg_daily_report: '0',
@@ -97,6 +145,7 @@ const form = ref({
 
 onMounted(async () => {
   await store.fetchSettings()
+  form.value.keep_alive_interval_minutes = store.settings.keep_alive_interval_minutes || '5'
   form.value.tg_bot_token = store.settings.tg_bot_token || ''
   form.value.tg_chat_id = store.settings.tg_chat_id || ''
   form.value.tg_daily_report = store.settings.tg_daily_report || '0'
@@ -106,11 +155,20 @@ function authHeader() {
   return { Authorization: `Bearer ${localStorage.getItem('token')}` }
 }
 
+function settingsItems() {
+  const interval = Number(form.value.keep_alive_interval_minutes)
+  if (!Number.isInteger(interval) || interval < 1 || interval > 1440) {
+    throw new Error('保活检查间隔必须是 1～1440 之间的整数分钟')
+  }
+  form.value.keep_alive_interval_minutes = String(interval)
+  return Object.entries(form.value).map(([key, value]) => ({ key, value: String(value) }))
+}
+
 async function save() {
   saving.value = true
   msg.value = ''
   try {
-    const items = Object.entries(form.value).map(([key, value]) => ({ key, value }))
+    const items = settingsItems()
     await axios.post('/api/settings', items, { headers: authHeader() })
     await store.fetchSettings()
     msg.value = '✅ 设置已保存'
@@ -126,7 +184,7 @@ async function testTg() {
   saving.value = true
   msg.value = ''
   try {
-    const items = Object.entries(form.value).map(([key, value]) => ({ key, value }))
+    const items = settingsItems()
     await axios.post('/api/settings', items, { headers: authHeader() })
   } catch (e) {
     msg.value = '❌ 保存失败，无法发送测试'
