@@ -105,7 +105,11 @@ async def get_rotation_config() -> dict:
         "rotation_last_warning_key",
         "rotation_breaker_latched",
         "cloudflare_api_token",
+        "cloudflare_auth_mode",
+        "cloudflare_auth_email",
+        "cloudflare_auth_key",
         "cloudflare_zone_id",
+        "cloudflare_zone_name",
         "cloudflare_record_name",
     }
     async with AsyncSessionLocal() as db:
@@ -163,7 +167,11 @@ async def get_rotation_config() -> dict:
         "last_warning_key": values.get("rotation_last_warning_key", ""),
         "breaker_latched": values.get("rotation_breaker_latched", "0") == "1",
         "cloudflare_api_token": values.get("cloudflare_api_token", ""),
+        "cloudflare_auth_mode": values.get("cloudflare_auth_mode", "token"),
+        "cloudflare_auth_email": values.get("cloudflare_auth_email", ""),
+        "cloudflare_auth_key": values.get("cloudflare_auth_key", ""),
         "cloudflare_zone_id": values.get("cloudflare_zone_id", ""),
+        "cloudflare_zone_name": values.get("cloudflare_zone_name", ""),
         "cloudflare_record_name": values.get("cloudflare_record_name", ""),
     }
 
@@ -232,13 +240,28 @@ async def wait_for_instance_status(
 
 
 async def sync_cloudflare_ddns(public_ip: str, config: dict, reason: str) -> dict:
+    auth_mode = config.get("cloudflare_auth_mode", "token")
     token = config.get("cloudflare_api_token", "")
+    auth_email = config.get("cloudflare_auth_email", "")
+    auth_key = config.get("cloudflare_auth_key", "")
     zone_id = config.get("cloudflare_zone_id", "")
+    zone_name = config.get("cloudflare_zone_name", "")
     record_name = config.get("cloudflare_record_name", "")
-    if not token or not zone_id or not record_name:
+    credentials_ready = (
+        bool(token)
+        if auth_mode == "token"
+        else bool(auth_email and auth_key)
+    )
+    if not credentials_ready or not (zone_id or zone_name) or not record_name:
         raise RuntimeError("Cloudflare DDNS 配置不完整")
 
-    client = CloudflareDNSClient(token, zone_id)
+    client = CloudflareDNSClient(
+        api_token=token if auth_mode == "token" else "",
+        zone_id=zone_id,
+        auth_email=auth_email if auth_mode == "global_key" else "",
+        auth_key=auth_key if auth_mode == "global_key" else "",
+        zone_name=zone_name,
+    )
     result = await client.update_a_record(record_name, public_ip)
     action = "已更新" if result["changed"] else "无需更新"
     await add_important_log(

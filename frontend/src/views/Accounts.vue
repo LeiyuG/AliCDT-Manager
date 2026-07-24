@@ -29,7 +29,7 @@
           </div>
         </div>
 
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 mt-4 text-xs">
+        <div class="grid grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-3 mt-4 text-xs">
           <div class="bg-surface rounded-lg px-3 py-2">
             <div class="text-text-muted mb-0.5">流量上限</div>
             <div class="text-text">{{ acc.traffic_limit_gb }} GB</div>
@@ -46,15 +46,29 @@
             <div class="text-text-muted mb-0.5">停机模式</div>
             <div class="text-text">{{ acc.shutdown_mode === 'StopCharging' ? '节省停机' : '普通停机' }}</div>
           </div>
+          <div class="bg-surface rounded-lg px-3 py-2 col-span-2 lg:col-span-1">
+            <div class="text-text-muted mb-0.5">自动计划</div>
+            <div :class="accountPlan(acc).tone" class="font-medium truncate" :title="accountPlan(acc).detail">
+              {{ accountPlan(acc).summary }}
+            </div>
+            <div v-if="accountPlan(acc).detail" class="text-[11px] text-text-muted mt-0.5 truncate">
+              {{ accountPlan(acc).detail }}
+            </div>
+          </div>
         </div>
       </div>
     </div>
 
-    <Modal v-if="showForm" @close="showForm = false">
-      <div class="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
-        <h2 class="font-semibold text-text">{{ editTarget ? '编辑账户' : '添加账户' }}</h2>
+    <Modal v-if="showForm" wide @close="showForm = false">
+      <div class="space-y-5">
+        <div>
+          <h2 class="font-semibold text-text text-lg">{{ editTarget ? '编辑账户' : '添加账户' }}</h2>
+          <div class="text-xs text-text-muted mt-1">账户凭据、流量保护和自动化计划可以在同一页完成设置。</div>
+        </div>
 
-        <div class="space-y-3">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <section class="rounded-xl border border-border bg-surface/40 p-4 space-y-3">
+            <div class="text-sm font-medium text-text flex items-center gap-2"><span>🔑</span> 账户与实例</div>
           <div>
             <label class="text-xs text-text-muted mb-1 block">备注名 *</label>
             <input v-model="form.name" class="input" placeholder="我的阿里云" />
@@ -86,7 +100,11 @@
             <label class="text-xs text-text-muted mb-1 block">实例 ID（用于保活/定时任务）</label>
             <input v-model="form.instance_id" class="input" placeholder="i-..." />
           </div>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          </section>
+
+          <section class="rounded-xl border border-border bg-surface/40 p-4 space-y-3">
+            <div class="text-sm font-medium text-text flex items-center gap-2"><span>🛡️</span> 保护策略</div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="text-xs text-text-muted mb-1 block">流量上限 (GB)</label>
               <input v-model.number="form.traffic_limit_gb" type="number" class="input" />
@@ -109,15 +127,33 @@
             </select>
           </div>
 
-          <label class="flex items-center gap-2 cursor-pointer">
+          <label class="flex items-center justify-between gap-3 cursor-pointer rounded-lg bg-background/40 border border-border px-3 py-2.5">
+            <span>
+              <span class="text-sm text-text block">抢占式实例自动保活</span>
+              <span class="text-xs text-text-muted">仅对上方填写的实例 ID 生效</span>
+            </span>
             <div class="relative">
               <input type="checkbox" v-model="form.keep_alive" class="sr-only" />
               <div :class="form.keep_alive ? 'bg-accent' : 'bg-border'" class="w-9 h-5 rounded-full transition-colors"></div>
               <div :class="form.keep_alive ? 'translate-x-4' : 'translate-x-0.5'" class="absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform"></div>
             </div>
-            <span class="text-sm text-text">开启抢占式保活</span>
           </label>
+          </section>
+        </div>
 
+        <section class="rounded-xl border border-border bg-surface/40 p-4 space-y-3">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <div class="text-sm font-medium text-text flex items-center gap-2"><span>⏰</span> 定时开关机</div>
+              <div class="text-xs text-text-muted mt-1">两个时间都留空即为关闭；设置任一时间后即启用对应任务。</div>
+            </div>
+            <span
+              class="self-start sm:self-auto text-xs px-2.5 py-1 rounded-full border font-medium"
+              :class="scheduleEnabled ? 'bg-success/10 border-success/20 text-success' : 'bg-surface border-border text-text-muted'"
+            >
+              {{ scheduleEnabled ? '已开启' : '未开启' }}
+            </span>
+          </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="text-xs text-text-muted mb-1 block">定时关机</label>
@@ -131,7 +167,15 @@
           <div class="text-xs text-text-muted bg-surface rounded-lg px-3 py-2">
             💡 开启保活时，定时关机期间保活会自动暂停，定时开机后恢复
           </div>
-        </div>
+          <button
+            v-if="scheduleEnabled"
+            @click="clearSchedule"
+            type="button"
+            class="btn-ghost text-xs px-3 py-1.5"
+          >
+            清除定时计划
+          </button>
+        </section>
 
         <div v-if="formError" class="text-xs text-danger bg-danger/10 border border-danger/20 rounded-lg px-3 py-2">
           {{ formError }}
@@ -164,7 +208,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useStore } from '../stores'
 import Modal from '../components/Modal.vue'
 
@@ -185,8 +229,115 @@ const defaultForm = () => ({
 })
 
 const form = ref(defaultForm())
+const scheduleEnabled = computed(() => Boolean(form.value.auto_stop_time || form.value.auto_start_time))
 
-onMounted(() => store.fetchAccounts())
+onMounted(() => Promise.all([
+  store.fetchAccounts(),
+  store.fetchSettings(),
+  store.fetchInstances(),
+]))
+
+const rotationIds = computed(() => {
+  try {
+    const ids = JSON.parse(store.settings.rotation_instance_ids || '[]')
+    return Array.isArray(ids) ? ids.filter(Boolean) : []
+  } catch {
+    return []
+  }
+})
+
+function accountPlan(acc) {
+  if (acc.auto_stop_time || acc.auto_start_time) {
+    const parts = []
+    if (acc.auto_stop_time) parts.push(`${acc.auto_stop_time} 关`)
+    if (acc.auto_start_time) parts.push(`${acc.auto_start_time} 开`)
+    return {
+      summary: '定时开关机',
+      detail: parts.join(' · '),
+      tone: 'text-accent',
+    }
+  }
+
+  if (store.settings.rotation_enabled === '1') {
+    const accountRotationId = rotationIds.value.find(instanceId =>
+      store.instances.some(instance =>
+        instance.instance_id === instanceId && instance.account_id === acc.id
+      )
+    )
+    if (accountRotationId) {
+      if (accountRotationId === store.settings.rotation_active_instance_id) {
+        return {
+          summary: '轮换 · 当前当班',
+          detail: '正在承载服务',
+          tone: 'text-success',
+        }
+      }
+      return {
+        summary: '轮换 · 下次启动',
+        detail: nextRotationTime(accountRotationId),
+        tone: 'text-accent',
+      }
+    }
+  }
+
+  return {
+    summary: '未设置',
+    detail: '',
+    tone: 'text-text-muted',
+  }
+}
+
+function nextRotationTime(instanceId) {
+  const ids = rotationIds.value
+  const activeIndex = ids.indexOf(store.settings.rotation_active_instance_id)
+  const targetIndex = ids.indexOf(instanceId)
+  if (activeIndex < 0 || targetIndex < 0 || ids.length < 2) return '等待轮换状态校准'
+
+  const steps = (targetIndex - activeIndex + ids.length) % ids.length
+  if (steps === 0) return '正在承载服务'
+
+  const [hour, minute] = (store.settings.rotation_switch_time || '00:00')
+    .split(':')
+    .map(Number)
+  const now = new Date()
+  const beijingParts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(now).map(part => [part.type, part.value])
+  )
+  const todaySwitch = new Date(Date.UTC(
+    Number(beijingParts.year),
+    Number(beijingParts.month) - 1,
+    Number(beijingParts.day),
+    hour - 8,
+    minute,
+  ))
+  const nextSwitch = new Date(todaySwitch)
+  let dayOffset = 0
+  if (now >= todaySwitch) {
+    nextSwitch.setUTCDate(nextSwitch.getUTCDate() + 1)
+    dayOffset = 1
+  }
+  nextSwitch.setUTCDate(nextSwitch.getUTCDate() + steps - 1)
+  dayOffset += steps - 1
+
+  const dayLabel = dayOffset === 0
+    ? '今天'
+    : dayOffset === 1
+      ? '明天'
+      : new Intl.DateTimeFormat('zh-CN', {
+          timeZone: 'Asia/Shanghai',
+          month: 'numeric',
+          day: 'numeric',
+        }).format(nextSwitch)
+  return `${dayLabel} ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+}
 
 function openAdd() {
   editTarget.value = null
@@ -200,6 +351,11 @@ function openEdit(acc) {
   form.value = { ...acc, access_key_secret: '' }
   formError.value = ''
   showForm.value = true
+}
+
+function clearSchedule() {
+  form.value.auto_stop_time = null
+  form.value.auto_start_time = null
 }
 
 async function submit() {

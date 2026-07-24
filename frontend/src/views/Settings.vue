@@ -102,12 +102,13 @@
           </select>
           <button
             type="button"
-            class="w-10 h-10 flex-shrink-0 rounded-xl border border-border text-text-muted hover:text-danger hover:border-danger/50 transition-colors disabled:opacity-40"
+            class="h-10 px-3 flex-shrink-0 rounded-xl border border-danger/30 bg-danger/5 text-danger text-xs font-medium hover:bg-danger/10 hover:border-danger/60 transition-colors disabled:bg-surface disabled:border-border disabled:text-text-muted disabled:opacity-60 disabled:cursor-not-allowed"
             :disabled="rotationInstanceIds.length <= 2"
             aria-label="移除该轮换实例"
+            :title="rotationInstanceIds.length <= 2 ? '启用轮换至少需要保留两项' : '仅移出轮换列表，不会删除实例'"
             @click="removeRotationInstance(index)"
           >
-            −
+            移出轮换
           </button>
         </div>
         <button type="button" class="btn-ghost border border-border w-full sm:w-auto" @click="addRotationInstance">
@@ -131,6 +132,9 @@
               {{ index + 1 }} · {{ selectedInstanceLabel(instanceId) }}
             </option>
           </select>
+          <div class="text-xs text-text-muted mt-1 leading-relaxed">
+            当前真正承载服务的实例；Cloudflare 域名会指向它，其余轮换实例保持节省停机。
+          </div>
         </div>
         <div>
           <label class="text-xs text-text-muted mb-1.5 block">每日切换时间（北京时间）</label>
@@ -157,11 +161,18 @@
           <span>☁️</span>
           <div>
             <div class="text-sm font-medium text-text">Cloudflare DDNS</div>
-            <div class="text-xs text-text-muted">API Token 仅保存在服务器数据库，页面不会回显</div>
+            <div class="text-xs text-text-muted">密钥仅保存在服务器数据库，页面不会回显</div>
           </div>
         </div>
+        <div>
+          <label class="text-xs text-text-muted mb-1.5 block">认证方式</label>
+          <select v-model="form.cloudflare_auth_mode" class="input">
+            <option value="token">API Token（推荐）</option>
+            <option value="global_key">邮箱 + Global API Key</option>
+          </select>
+        </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
+          <div v-if="form.cloudflare_auth_mode === 'token'">
             <label class="text-xs text-text-muted mb-1.5 block">API Token</label>
             <input
               v-model="form.cloudflare_api_token"
@@ -170,14 +181,37 @@
               :placeholder="cloudflareTokenConfigured ? '已配置，留空不修改' : '需要 DNS Read / DNS Write 权限'"
             />
           </div>
-          <div>
+          <div v-if="form.cloudflare_auth_mode === 'token'">
             <label class="text-xs text-text-muted mb-1.5 block">Zone ID</label>
-            <input v-model="form.cloudflare_zone_id" class="input font-mono" placeholder="32 位 Zone ID" />
+            <input v-model="form.cloudflare_zone_id" class="input font-mono" placeholder="可留空，改用 Zone 名称自动查询" />
           </div>
-          <div class="sm:col-span-2">
-            <label class="text-xs text-text-muted mb-1.5 block">完整 A 记录域名</label>
-            <input v-model="form.cloudflare_record_name" class="input" placeholder="server.example.com" />
+          <div v-if="form.cloudflare_auth_mode === 'global_key'">
+            <label class="text-xs text-text-muted mb-1.5 block">Cloudflare 登录邮箱</label>
+            <input v-model="form.cloudflare_auth_email" type="email" class="input" placeholder="name@example.com" />
           </div>
+          <div v-if="form.cloudflare_auth_mode === 'global_key'">
+            <label class="text-xs text-text-muted mb-1.5 block">Global API Key</label>
+            <input
+              v-model="form.cloudflare_auth_key"
+              type="password"
+              class="input"
+              :placeholder="cloudflareKeyConfigured ? '已配置，留空不修改' : '不要填写账号密码'"
+            />
+          </div>
+          <div>
+            <label class="text-xs text-text-muted mb-1.5 block">
+              Zone 名称{{ form.cloudflare_auth_mode === 'token' ? '（与 Zone ID 二选一）' : '' }}
+            </label>
+            <input v-model="form.cloudflare_zone_name" class="input" placeholder="example.com" />
+          </div>
+          <div>
+            <label class="text-xs text-text-muted mb-1.5 block">A 记录名称</label>
+            <input v-model="form.cloudflare_record_name" class="input" placeholder="cdt 或 subdomain.example.com" />
+          </div>
+        </div>
+        <div class="text-xs text-text-muted rounded-lg bg-surface px-3 py-2 leading-relaxed">
+          填写 Zone 名称后，可直接使用简短记录名，例如 <span class="font-mono text-text">subdomain</span>，
+          系统会自动解析为 <span class="font-mono text-text">subdomain.example.com</span>。
         </div>
       </div>
 
@@ -283,6 +317,7 @@ const cfTesting = ref(false)
 const msg = ref('')
 const newPassword = ref('')
 const cloudflareTokenConfigured = ref(false)
+const cloudflareKeyConfigured = ref(false)
 const form = ref({
   keep_alive_interval_minutes: '5',
   rotation_enabled: '0',
@@ -292,8 +327,12 @@ const form = ref({
   rotation_traffic_protect_gb: '188',
   rotation_grace_seconds: '90',
   rotation_timeout_seconds: '600',
+  cloudflare_auth_mode: 'token',
   cloudflare_api_token: '',
+  cloudflare_auth_email: '',
+  cloudflare_auth_key: '',
   cloudflare_zone_id: '',
+  cloudflare_zone_name: '',
   cloudflare_record_name: '',
   tg_bot_token: '',
   tg_chat_id: '',
@@ -325,9 +364,13 @@ onMounted(async () => {
   form.value.rotation_traffic_protect_gb = store.settings.rotation_traffic_protect_gb || '188'
   form.value.rotation_grace_seconds = store.settings.rotation_grace_seconds || '90'
   form.value.rotation_timeout_seconds = store.settings.rotation_timeout_seconds || '600'
+  form.value.cloudflare_auth_mode = store.settings.cloudflare_auth_mode || 'token'
+  form.value.cloudflare_auth_email = store.settings.cloudflare_auth_email || ''
   form.value.cloudflare_zone_id = store.settings.cloudflare_zone_id || ''
+  form.value.cloudflare_zone_name = store.settings.cloudflare_zone_name || ''
   form.value.cloudflare_record_name = store.settings.cloudflare_record_name || ''
   cloudflareTokenConfigured.value = store.settings.cloudflare_api_token_configured === '1'
+  cloudflareKeyConfigured.value = store.settings.cloudflare_auth_key_configured === '1'
   form.value.tg_bot_token = store.settings.tg_bot_token || ''
   form.value.tg_chat_id = store.settings.tg_chat_id || ''
   form.value.tg_daily_report = store.settings.tg_daily_report || '0'
@@ -401,11 +444,26 @@ function settingsItems() {
     if (!rotationIds.includes(form.value.rotation_active_instance_id)) {
       throw new Error('请选择当前当班实例')
     }
-    if (!form.value.cloudflare_api_token && !cloudflareTokenConfigured.value) {
-      throw new Error('请填写 Cloudflare API Token')
+    if (form.value.cloudflare_auth_mode === 'token') {
+      if (!form.value.cloudflare_api_token && !cloudflareTokenConfigured.value) {
+        throw new Error('请填写 Cloudflare API Token')
+      }
+      if (!form.value.cloudflare_zone_id && !form.value.cloudflare_zone_name) {
+        throw new Error('请填写 Cloudflare Zone ID 或 Zone 名称')
+      }
+    } else {
+      if (!form.value.cloudflare_auth_email) {
+        throw new Error('请填写 Cloudflare 登录邮箱')
+      }
+      if (!form.value.cloudflare_auth_key && !cloudflareKeyConfigured.value) {
+        throw new Error('请填写 Cloudflare Global API Key')
+      }
+      if (!form.value.cloudflare_zone_name) {
+        throw new Error('请填写 Cloudflare Zone 名称')
+      }
     }
-    if (!form.value.cloudflare_zone_id || !form.value.cloudflare_record_name) {
-      throw new Error('请填写 Cloudflare Zone ID 和完整 A 记录域名')
+    if (!form.value.cloudflare_record_name) {
+      throw new Error('请填写 Cloudflare A 记录名称')
     }
   }
   form.value.keep_alive_interval_minutes = String(interval)
@@ -419,8 +477,13 @@ async function testCloudflare() {
     const items = settingsItems()
     await axios.post('/api/settings', items, { headers: authHeader() })
     const { data } = await axios.post('/api/settings/test-cloudflare', {}, { headers: authHeader() })
-    cloudflareTokenConfigured.value = true
-    form.value.cloudflare_api_token = ''
+    if (form.value.cloudflare_auth_mode === 'token') {
+      cloudflareTokenConfigured.value = true
+      form.value.cloudflare_api_token = ''
+    } else {
+      cloudflareKeyConfigured.value = true
+      form.value.cloudflare_auth_key = ''
+    }
     msg.value = `✅ Cloudflare 连接成功：${data.record_name} → ${data.content}`
   } catch (e) {
     msg.value = '❌ Cloudflare 验证失败：' + (e.response?.data?.detail || e.message)
@@ -439,6 +502,10 @@ async function save() {
     if (form.value.cloudflare_api_token) {
       cloudflareTokenConfigured.value = true
       form.value.cloudflare_api_token = ''
+    }
+    if (form.value.cloudflare_auth_key) {
+      cloudflareKeyConfigured.value = true
+      form.value.cloudflare_auth_key = ''
     }
     await store.fetchSettings()
     msg.value = '✅ 设置已保存'

@@ -23,7 +23,7 @@ read -p "服务端口 [8000]: " PORT
 PORT=${PORT:-8000}
 
 # 创建目录
-INSTALL_DIR="/app/alicdt-manager"
+INSTALL_DIR="/root/docker/alicdt-manager"
 mkdir -p "$INSTALL_DIR/data"
 cd "$INSTALL_DIR"
 
@@ -35,7 +35,7 @@ cd "$INSTALL_DIR"
 } > .env
 
 # 下载 docker-compose.yml
-curl -fsSL https://raw.githubusercontent.com/lillinlin/AliCDT-Manager/main/docker-compose.yml -o docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/LeiyuG/AliCDT-Manager/main/docker-compose.yml -o docker-compose.yml
 
 # 启动
 docker compose pull

@@ -42,7 +42,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/LeiyuG/AliCDT-Manager/main/i
 ## 🛠 手动部署
 
 ```bash
-mkdir -p /app/alicdt-manager/data && cd /app/alicdt-manager
+mkdir -p /root/docker/alicdt-manager/data && cd /root/docker/alicdt-manager
 ```
 ```bash
 echo "SECRET_KEY=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | head -c 48)" > .env
@@ -88,10 +88,18 @@ ports:
 ```
 
 ## ✨ 界面截图
-![1](READMEimages/1.png)  
-![2](READMEimages/2.png)  
-![3](READMEimages/3.png)  
-![5](READMEimages/5.png)  
+
+### 三列实例总览
+![三列实例总览](READMEimages/1.png)
+
+### 账户与自动计划
+![账户与自动计划](READMEimages/2.png)
+
+### 宽版账户设置
+![宽版账户设置](READMEimages/3.png)
+
+### 多账号实例轮换
+![多账号实例轮换](READMEimages/5.png)
 
 ## 可选：Nginx / Cloudflare 配置示例
 

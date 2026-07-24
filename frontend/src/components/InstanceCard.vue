@@ -52,9 +52,8 @@
       <div class="flex flex-col items-end gap-1.5 flex-shrink-0">
         <div
           class="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-surface/50 border border-border/50"
-          :title="instance.is_spot ? `${regionLabel} · 抢占式实例` : regionLabel"
+          :title="regionLabel"
         >
-          <span v-if="instance.is_spot" class="text-accent text-xs" aria-label="抢占式实例">⚡</span>
           <span class="text-base leading-none drop-shadow-sm font-emoji">{{ regionFlag }}</span>
           <span class="text-xs text-text font-medium">{{ instance.region_id || '未知' }}</span>
         </div>
@@ -97,6 +96,11 @@
     </div>
 
     <div class="flex flex-wrap gap-2 mt-4 text-xs">
+      <span v-if="instance.is_spot"
+        class="px-2.5 py-1 rounded-md bg-surface border border-border text-text-muted font-medium flex items-center gap-1 shadow-sm">
+        <span class="text-accent">⚡</span>
+        抢占式
+      </span>
       <span v-if="account?.keep_alive && account?.instance_id === instance.instance_id && instance.is_spot"
         class="px-2.5 py-1 rounded-md bg-accent/10 border border-accent/20 text-accent font-medium flex items-center gap-1.5 shadow-sm">
         <span class="w-1.5 h-1.5 bg-accent rounded-full animate-ping inline-block"></span>

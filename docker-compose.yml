@@ -1,6 +1,6 @@
 services:
   alicdt-manager:
-    image: ${IMAGE_NAME:-ghcr.io/lillinlin/alicdt-manager:latest}
+    image: ${IMAGE_NAME:-ghcr.io/leiyug/alicdt-manager:latest}
     container_name: alicdt-manager
     restart: always
     ports:

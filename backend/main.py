@@ -32,7 +32,7 @@ from scheduler.jobs import (
 SECRET_KEY = os.environ.get("SECRET_KEY", "fallback-change-me")
 ALGORITHM = "HS256"
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-SECRET_SETTING_KEYS = {"cloudflare_api_token"}
+SECRET_SETTING_KEYS = {"cloudflare_api_token", "cloudflare_auth_key"}
 
 
 def create_token(username: str):
@@ -356,6 +356,9 @@ async def update_settings(items: List[SettingUpdate], user=Depends(get_current_u
         "流量保护值",
         float,
     )
+    cloudflare_auth_mode = merged_values.get("cloudflare_auth_mode", "token").strip()
+    if cloudflare_auth_mode not in {"token", "global_key"}:
+        raise HTTPException(status_code=400, detail="Cloudflare 认证方式无效")
 
     if rotation_enabled:
         if len(rotation_ids) < 2:
@@ -383,13 +386,31 @@ async def update_settings(items: List[SettingUpdate], user=Depends(get_current_u
                 detail="每个阿里云账号只能选择一台实例参与轮换",
             )
 
-        cloudflare_token = submitted_values.get("cloudflare_api_token", "").strip() or existing_values.get("cloudflare_api_token", "")
-        if not cloudflare_token:
-            raise HTTPException(status_code=400, detail="请填写 Cloudflare API Token")
-        if not merged_values.get("cloudflare_zone_id", "").strip():
-            raise HTTPException(status_code=400, detail="请填写 Cloudflare Zone ID")
+        if cloudflare_auth_mode == "token":
+            cloudflare_token = (
+                submitted_values.get("cloudflare_api_token", "").strip()
+                or existing_values.get("cloudflare_api_token", "")
+            )
+            if not cloudflare_token:
+                raise HTTPException(status_code=400, detail="请填写 Cloudflare API Token")
+            if not (
+                merged_values.get("cloudflare_zone_id", "").strip()
+                or merged_values.get("cloudflare_zone_name", "").strip()
+            ):
+                raise HTTPException(status_code=400, detail="请填写 Cloudflare Zone ID 或 Zone 名称")
+        else:
+            cloudflare_key = (
+                submitted_values.get("cloudflare_auth_key", "").strip()
+                or existing_values.get("cloudflare_auth_key", "")
+            )
+            if not merged_values.get("cloudflare_auth_email", "").strip():
+                raise HTTPException(status_code=400, detail="请填写 Cloudflare 登录邮箱")
+            if not cloudflare_key:
+                raise HTTPException(status_code=400, detail="请填写 Cloudflare Global API Key")
+            if not merged_values.get("cloudflare_zone_name", "").strip():
+                raise HTTPException(status_code=400, detail="请填写 Cloudflare Zone 名称")
         if not merged_values.get("cloudflare_record_name", "").strip():
-            raise HTTPException(status_code=400, detail="请填写需要更新的完整域名")
+            raise HTTPException(status_code=400, detail="请填写需要更新的 A 记录名称")
 
     normalized_rotation = {
         "rotation_enabled": "1" if rotation_enabled else "0",
@@ -401,6 +422,7 @@ async def update_settings(items: List[SettingUpdate], user=Depends(get_current_u
         "rotation_grace_seconds": str(rotation_grace),
         "rotation_timeout_seconds": str(rotation_timeout),
         "rotation_traffic_protect_gb": str(rotation_protect),
+        "cloudflare_auth_mode": cloudflare_auth_mode,
     }
     submitted_values.update(normalized_rotation)
 
@@ -450,18 +472,42 @@ async def test_cloudflare(user=Depends(get_current_user), db: AsyncSession = Dep
     result = await db.execute(
         select(Settings).where(
             Settings.key.in_(
-                ["cloudflare_api_token", "cloudflare_zone_id", "cloudflare_record_name"]
+                [
+                    "cloudflare_auth_mode",
+                    "cloudflare_api_token",
+                    "cloudflare_auth_email",
+                    "cloudflare_auth_key",
+                    "cloudflare_zone_id",
+                    "cloudflare_zone_name",
+                    "cloudflare_record_name",
+                ]
             )
         )
     )
     values = {row.key: row.value for row in result.scalars().all()}
+    auth_mode = values.get("cloudflare_auth_mode", "token")
     token = values.get("cloudflare_api_token", "")
+    auth_email = values.get("cloudflare_auth_email", "")
+    auth_key = values.get("cloudflare_auth_key", "")
     zone_id = values.get("cloudflare_zone_id", "")
+    zone_name = values.get("cloudflare_zone_name", "")
     record_name = values.get("cloudflare_record_name", "")
-    if not token or not zone_id or not record_name:
+    credentials_ready = (
+        bool(token)
+        if auth_mode == "token"
+        else bool(auth_email and auth_key)
+    )
+    if not credentials_ready or not (zone_id or zone_name) or not record_name:
         raise HTTPException(status_code=400, detail="请先保存完整的 Cloudflare DDNS 配置")
     try:
-        record = await CloudflareDNSClient(token, zone_id).get_a_record(record_name)
+        client = CloudflareDNSClient(
+            api_token=token if auth_mode == "token" else "",
+            zone_id=zone_id,
+            auth_email=auth_email if auth_mode == "global_key" else "",
+            auth_key=auth_key if auth_mode == "global_key" else "",
+            zone_name=zone_name,
+        )
+        record = await client.get_a_record(record_name)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Cloudflare 验证失败: {exc}")
     return {
