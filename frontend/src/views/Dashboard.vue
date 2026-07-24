@@ -52,6 +52,7 @@
         <InstanceCard
           :instance="inst"
           :account="accountMap[inst.account_id]"
+          :settings="store.settings"
           @start="store.controlInstance(inst.instance_id, 'start')"
           @stop="store.controlInstance(inst.instance_id, 'stop')"
         />
@@ -147,8 +148,11 @@ function updateTime() {
 let timer
 onMounted(async () => {
   canDrag.value = window.matchMedia('(min-width: 1024px) and (pointer: fine)').matches
-  await store.fetchAccounts()
-  await store.fetchInstances()
+  await Promise.all([
+    store.fetchAccounts(),
+    store.fetchInstances(),
+    store.fetchSettings(),
+  ])
   updateTime()
   timer = setInterval(updateTime, 1000)
 })

@@ -106,6 +106,14 @@
         <span class="w-1.5 h-1.5 bg-accent rounded-full animate-ping inline-block"></span>
         自动保活中
       </span>
+      <span v-if="rotationPlan"
+        class="px-2.5 py-1 rounded-md font-medium flex items-center gap-1 shadow-sm"
+        :class="rotationPlan.active
+          ? 'bg-success/10 border border-success/20 text-success'
+          : 'bg-accent/10 border border-accent/20 text-accent'"
+        :title="rotationPlan.title">
+        🔁 {{ rotationPlan.label }}
+      </span>
       <span v-if="account?.auto_stop_time || account?.auto_start_time"
         class="px-2.5 py-1 rounded-md bg-warning/10 border border-warning/20 text-warning-dark font-medium flex items-center gap-1 shadow-sm">
         ⏰
@@ -189,7 +197,14 @@
 import { ref, computed, onMounted } from 'vue'
 import { useStore } from '../stores'
 
-const props = defineProps({ instance: Object, account: Object })
+const props = defineProps({
+  instance: Object,
+  account: Object,
+  settings: {
+    type: Object,
+    default: () => ({}),
+  },
+})
 
 const store = useStore()
 const billing = ref(null)
@@ -251,6 +266,87 @@ const statusLabel = computed(() => ({
 const trafficPct = computed(() => props.instance.traffic_percent || 0)
 const trafficColor = computed(() => trafficPct.value >= 90 ? 'text-danger' : trafficPct.value >= 75 ? 'text-warning' : 'text-success')
 const trafficBarColor = computed(() => trafficPct.value >= 90 ? 'bg-danger' : trafficPct.value >= 75 ? 'bg-warning' : 'bg-success')
+
+const rotationIds = computed(() => {
+  if (props.settings?.rotation_enabled !== '1') return []
+  try {
+    const ids = JSON.parse(props.settings.rotation_instance_ids || '[]')
+    return Array.isArray(ids) ? ids.filter(Boolean) : []
+  } catch {
+    return []
+  }
+})
+
+const rotationPlan = computed(() => {
+  const instanceId = props.instance?.instance_id
+  const targetIndex = rotationIds.value.indexOf(instanceId)
+  if (targetIndex < 0) return null
+
+  const activeId = props.settings?.rotation_active_instance_id
+  const activeIndex = rotationIds.value.indexOf(activeId)
+  if (activeIndex < 0 || rotationIds.value.length < 2) {
+    return {
+      active: false,
+      label: '等待轮换校准',
+      title: '轮换设置已开启，正在等待后台确认当前当班实例',
+    }
+  }
+
+  const active = instanceId === activeId
+  const nextTime = nextRotationTime(active ? 1 : (targetIndex - activeIndex + rotationIds.value.length) % rotationIds.value.length)
+  return {
+    active,
+    label: active
+      ? `当班 · ${nextTime} 切换`
+      : `待机 · ${nextTime} 启动`,
+    title: active
+      ? `当前轮换当班实例，将在 ${nextTime} 切换到下一台实例`
+      : `轮换待机实例，预计在 ${nextTime} 启动`,
+  }
+})
+
+function nextRotationTime(steps) {
+  const [hour, minute] = (props.settings?.rotation_switch_time || '00:00')
+    .split(':')
+    .map(Number)
+  const now = new Date()
+  const beijingParts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(now).map(part => [part.type, part.value])
+  )
+  const nextSwitch = new Date(Date.UTC(
+    Number(beijingParts.year),
+    Number(beijingParts.month) - 1,
+    Number(beijingParts.day),
+    hour - 8,
+    minute,
+  ))
+  let dayOffset = 0
+  if (now >= nextSwitch) {
+    nextSwitch.setUTCDate(nextSwitch.getUTCDate() + 1)
+    dayOffset = 1
+  }
+  nextSwitch.setUTCDate(nextSwitch.getUTCDate() + Math.max(steps, 1) - 1)
+  dayOffset += Math.max(steps, 1) - 1
+
+  const dayLabel = dayOffset === 0
+    ? '今天'
+    : dayOffset === 1
+      ? '明天'
+      : new Intl.DateTimeFormat('zh-CN', {
+          timeZone: 'Asia/Shanghai',
+          month: 'numeric',
+          day: 'numeric',
+        }).format(nextSwitch)
+  return `${dayLabel} ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+}
 
 function startEditName() {
   newName.value = props.instance.remark || ''
