@@ -53,9 +53,15 @@ export const useStore = defineStore('main', () => {
 
   async function syncAll() {
     loading.value = true
-    await api.post('/instances/sync')
-    await fetchInstances()
-    loading.value = false
+    try {
+      await api.post('/instances/sync')
+      await fetchInstances()
+      await Promise.allSettled(
+        accounts.value.map(account => getBilling(account.id, true))
+      )
+    } finally {
+      loading.value = false
+    }
   }
 
   async function syncSingleInstance(instanceId) {

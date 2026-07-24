@@ -151,19 +151,7 @@
 
     <div class="flex-1"></div>
 
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-text-muted mt-5 mb-3 px-1">
-      <span class="flex items-center gap-1 min-w-0"><span class="text-xs">🔑</span> <span class="truncate">{{ account?.name || '未知账户' }}</span></span>
-      <div class="flex items-center gap-2">
-        <span v-if="instance.last_synced" class="opacity-70">同步于 {{ formatTime(instance.last_synced) }}</span>
-        <button @click="syncThis" :disabled="isSyncing"
-          class="flex items-center gap-1 px-2 py-0.5 rounded-md bg-surface border border-border hover:border-accent/40 hover:text-accent transition-all disabled:opacity-50">
-          <span :class="isSyncing ? 'animate-spin' : ''" class="text-xs">🔄</span>
-          <span class="text-xs">{{ isSyncing ? '同步中' : '同步' }}</span>
-        </button>
-      </div>
-    </div>
-
-    <div class="flex gap-2.5 pt-3 border-t border-border/60">
+    <div class="flex gap-2.5 pt-3 mt-5 border-t border-border/60">
       <button
         v-if="instance.status !== 'Running'"
         @click="handleStart"
@@ -207,7 +195,9 @@ const props = defineProps({
 })
 
 const store = useStore()
-const billing = ref(props.account ? store.billingCache[props.account.id] || null : null)
+const billing = computed(() => (
+  props.account ? store.billingCache[props.account.id] || null : null
+))
 const billingLoading = ref(!billing.value)
 const billingError = ref('')
 const editingName = ref(false)
@@ -215,7 +205,6 @@ const newName = ref('')
 const isSavingName = ref(false)
 const isStarting = ref(false)
 const isStopping = ref(false)
-const isSyncing = ref(false)
 
 const REGION_MAP = {
   'cn-hangzhou':     { flag: '🇨🇳', label: '中国 杭州' },
@@ -390,26 +379,13 @@ async function handleStop() {
   }
 }
 
-async function syncThis() {
-  if (isSyncing.value) return
-  isSyncing.value = true
-  try {
-    await store.syncSingleInstance(props.instance.instance_id)
-    if (props.account) {
-      billing.value = await store.getBilling(props.account.id, true)
-    }
-  } finally {
-    isSyncing.value = false
-  }
-}
-
 async function loadBilling() {
   if (!props.account) return
   const hasCachedBilling = Boolean(billing.value)
   if (!hasCachedBilling) billingLoading.value = true
   billingError.value = ''
   try {
-    billing.value = await store.getBilling(props.account.id)
+    await store.getBilling(props.account.id)
   } catch (e) {
     if (!hasCachedBilling) billingError.value = '账单获取失败'
   } finally {
@@ -427,10 +403,6 @@ watch(
   { immediate: true },
 )
 
-function formatTime(t) {
-  if (!t) return ''
-  return new Date(t + 'Z').toLocaleTimeString('zh-CN', { hour12: false })
-}
 </script>
 
 <style scoped>
