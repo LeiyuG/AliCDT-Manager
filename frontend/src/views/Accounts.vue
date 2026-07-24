@@ -39,7 +39,7 @@
             <div class="text-text">{{ acc.threshold_percent }}%</div>
           </div>
           <div class="bg-surface rounded-lg px-3 py-2">
-            <div class="text-text-muted mb-0.5">待还熔断</div>
+            <div class="text-text-muted mb-0.5">待还款保护</div>
             <div class="text-text">{{ acc.outstanding_threshold > 0 ? acc.outstanding_threshold : '未启用' }}</div>
           </div>
           <div class="bg-surface rounded-lg px-3 py-2">
@@ -115,9 +115,11 @@
             </div>
           </div>
           <div>
-            <label class="text-xs text-text-muted mb-1 block">待还金额熔断阈值（0表示不启用）</label>
+            <label class="text-xs text-text-muted mb-1 block">待还款停机阈值（0 表示关闭）</label>
             <input v-model.number="form.outstanding_threshold" type="number" step="0.01" class="input" placeholder="例如 0.45" />
-            <div class="text-xs text-text-muted mt-1">当账户待还款金额达到此数值时自动停机</div>
+            <div class="text-xs text-text-muted mt-1">
+              每 10 分钟检查本月待还款；达到此金额后按停机模式处理。金额单位与账户账单币种一致。
+            </div>
           </div>
           <div>
             <label class="text-xs text-text-muted mb-1 block">停机模式</label>

@@ -87,9 +87,19 @@ textarea {
 
   input[type='time'].input {
     display: block;
-    width: 100%;
+    width: -webkit-fill-available;
+    width: stretch;
     min-width: 0;
-    max-width: 100%;
+    max-width: -webkit-fill-available;
+    max-width: stretch;
+    -webkit-appearance: none;
+    appearance: none;
+    overflow: hidden;
+  }
+
+  input[type='time'].input::-webkit-date-and-time-value {
+    min-width: 0;
+    margin: 0;
   }
 }
 
