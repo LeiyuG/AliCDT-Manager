@@ -4,7 +4,6 @@
     <div class="flex items-start justify-between gap-3">
       <div>
         <h1 class="text-xl font-semibold text-text">总览</h1>
-        <p class="text-sm text-text-muted mt-0.5">{{ now }}</p>
       </div>
       <button @click="sync" :disabled="store.loading"
         class="btn-primary flex items-center gap-2 flex-shrink-0 px-3 sm:px-4">
@@ -50,7 +49,7 @@
         ]"
       >
         <div v-if="sortedInstances.length > 1" class="lg:hidden flex items-center justify-between px-1 mb-2 text-xs text-text-muted">
-          <span>顺序 {{ index + 1 }}</span>
+          <span>实例 {{ index + 1 }}</span>
           <div class="flex items-center gap-1">
             <button
               type="button"
@@ -85,13 +84,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useStore } from '../stores'
 import StatCard from '../components/StatCard.vue'
 import InstanceCard from '../components/InstanceCard.vue'
 
 const store = useStore()
-const now = ref('')
 const canDrag = ref(true)
 const orderSaving = ref(false)
 
@@ -188,11 +186,6 @@ function onDragEnd() {
   dragOverId.value = null
 }
 
-function updateTime() {
-  now.value = new Date().toLocaleString('zh-CN', { hour12: false })
-}
-
-let timer
 onMounted(async () => {
   canDrag.value = window.matchMedia('(min-width: 1024px) and (pointer: fine)').matches
   await Promise.all([
@@ -217,10 +210,7 @@ onMounted(async () => {
   } else {
     customOrder.value = normalizedOrder
   }
-  updateTime()
-  timer = setInterval(updateTime, 1000)
 })
-onUnmounted(() => clearInterval(timer))
 
 async function sync() {
   await store.syncAll()
