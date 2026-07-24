@@ -1,11 +1,11 @@
 <template>
-  <div class="min-h-screen flex items-center justify-center relative overflow-hidden">
+  <div class="min-h-screen flex items-center justify-center relative overflow-hidden px-4 py-20 sm:p-6">
     <div class="absolute inset-0 pointer-events-none">
       <div class="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-accent/10 rounded-full blur-3xl"></div>
       <div class="absolute bottom-1/4 left-1/3 w-64 h-64 bg-accent/10 rounded-full blur-3xl"></div>
     </div>
 
-    <div class="card p-8 w-full max-w-sm relative fade-in">
+    <div class="card p-5 sm:p-8 w-full max-w-sm relative fade-in">
       <div class="text-center mb-8">
         <div class="w-14 h-14 rounded-2xl bg-accent/10 border border-accent/20 flex items-center justify-center text-2xl mx-auto mb-4 glow-pulse">🛡️</div>
         <h1 class="text-xl font-semibold text-text">AliCDT Manager</h1>

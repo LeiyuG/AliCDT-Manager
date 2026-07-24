@@ -80,11 +80,6 @@ export const useStore = defineStore('main', () => {
     })
   }
 
-  async function releaseInstance(instanceId) {
-    await api.delete(`/instances/${instanceId}`)
-    await fetchInstances()
-  }
-
   async function getBilling(accountId) {
     const { data } = await api.get(`/billing/${accountId}`)
     return data
@@ -125,7 +120,7 @@ export const useStore = defineStore('main', () => {
   return {
     instances, accounts, logs, settings, loading,
     login, fetchInstances, fetchAccounts, fetchLogs, fetchSettings,
-    syncAll, syncSingleInstance, controlInstance, releaseInstance, getBilling,
+    syncAll, syncSingleInstance, controlInstance, getBilling,
     createAccount, updateAccount, deleteAccount, saveSettings, clearLogs,
     updateInstanceRemark,
   }

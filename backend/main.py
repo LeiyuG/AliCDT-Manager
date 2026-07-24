@@ -1,4 +1,5 @@
 import os
+import json
 import httpx
 from datetime import datetime, timedelta
 from typing import Optional, List
@@ -14,6 +15,7 @@ from passlib.context import CryptContext
 
 from models.database import init_db, get_db, Account, Instance, Log, Settings
 from core.aliyun import AliyunClient
+from core.cloudflare import CloudflareDNSClient
 from scheduler.jobs import (
     start_scheduler,
     sync_instances,
@@ -22,11 +24,15 @@ from scheduler.jobs import (
     configure_keep_alive_job,
     MIN_KEEP_ALIVE_INTERVAL_MINUTES,
     MAX_KEEP_ALIVE_INTERVAL_MINUTES,
+    DEFAULT_ROTATION_GRACE_SECONDS,
+    DEFAULT_ROTATION_TIMEOUT_SECONDS,
+    DEFAULT_ROTATION_TRAFFIC_PROTECT_GB,
 )
 
 SECRET_KEY = os.environ.get("SECRET_KEY", "fallback-change-me")
 ALGORITHM = "HS256"
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+SECRET_SETTING_KEYS = {"cloudflare_api_token"}
 
 
 def create_token(username: str):
@@ -255,22 +261,6 @@ async def stop_instance(instance_id: str, user=Depends(get_current_user), db: As
     return {"message": "关机指令已发送"}
 
 
-@app.delete("/api/instances/{instance_id}")
-async def release_instance(instance_id: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Instance).where(Instance.instance_id == instance_id))
-    inst = result.scalar_one_or_none()
-    if not inst:
-        raise HTTPException(status_code=404)
-    result = await db.execute(select(Account).where(Account.id == inst.account_id))
-    acc = result.scalar_one_or_none()
-    client = AliyunClient(acc.access_key_id, acc.access_key_secret, acc.region_id, acc.site_type)
-    await client.delete_instance(instance_id)
-    await db.execute(delete(Instance).where(Instance.instance_id == instance_id))
-    await db.commit()
-    await add_important_log("system", f"释放实例: {instance_id}")
-    return {"message": "实例已释放"}
-
-
 @app.get("/api/billing/{account_id}")
 async def get_billing(account_id: int, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Account).where(Account.id == account_id))
@@ -287,15 +277,145 @@ async def get_billing(account_id: int, user=Depends(get_current_user), db: Async
 async def get_settings(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Settings))
     rows = result.scalars().all()
-    return {r.key: r.value for r in rows if "password_hash" not in r.key}
+    values = {r.key: r.value for r in rows if "password_hash" not in r.key}
+    for key in SECRET_SETTING_KEYS:
+        configured = bool(values.get(key))
+        values[key] = ""
+        values[f"{key}_configured"] = "1" if configured else "0"
+    return values
 
 
 @app.post("/api/settings")
 async def update_settings(items: List[SettingUpdate], user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    existing_result = await db.execute(select(Settings))
+    existing_values = {row.key: row.value for row in existing_result.scalars().all()}
+    submitted_values = {item.key: item.value for item in items}
+    merged_values = {**existing_values, **submitted_values}
     keep_alive_interval = None
-    for item in items:
-        value = item.value
-        if item.key == "keep_alive_interval_minutes":
+
+    if merged_values.get("rotation_enabled", "0") not in {"0", "1"}:
+        raise HTTPException(status_code=400, detail="轮换开关参数无效")
+
+    rotation_enabled = merged_values.get("rotation_enabled", "0") == "1"
+
+    def parse_rotation_ids(values):
+        raw_ids = str(values.get("rotation_instance_ids") or "").strip()
+        if raw_ids:
+            try:
+                parsed_ids = json.loads(raw_ids)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="轮换实例列表格式无效")
+            if not isinstance(parsed_ids, list):
+                raise HTTPException(status_code=400, detail="轮换实例列表格式无效")
+            return [
+                str(instance_id).strip()
+                for instance_id in parsed_ids
+                if str(instance_id).strip()
+            ]
+        return [
+            instance_id
+            for instance_id in (
+                str(values.get("rotation_instance_a") or "").strip(),
+                str(values.get("rotation_instance_b") or "").strip(),
+            )
+            if instance_id
+        ]
+
+    rotation_ids = parse_rotation_ids(merged_values)
+    rotation_active = (
+        merged_values.get("rotation_active_instance_id", "").strip()
+        or (rotation_ids[0] if rotation_ids else "")
+    )
+    rotation_time = merged_values.get("rotation_switch_time", "00:00").strip()
+    try:
+        datetime.strptime(rotation_time, "%H:%M")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="每日切换时间格式必须为 HH:MM")
+
+    def parse_rotation_number(key, default, minimum, maximum, label, cast):
+        raw = merged_values.get(key, str(default))
+        try:
+            value = cast(raw)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail=f"{label}格式无效")
+        if not minimum <= value <= maximum:
+            raise HTTPException(status_code=400, detail=f"{label}必须在 {minimum}～{maximum} 之间")
+        return value
+
+    rotation_grace = parse_rotation_number(
+        "rotation_grace_seconds", DEFAULT_ROTATION_GRACE_SECONDS, 0, 600, "切换缓冲秒数", int
+    )
+    rotation_timeout = parse_rotation_number(
+        "rotation_timeout_seconds", DEFAULT_ROTATION_TIMEOUT_SECONDS, 60, 900, "状态确认超时秒数", int
+    )
+    rotation_protect = parse_rotation_number(
+        "rotation_traffic_protect_gb",
+        DEFAULT_ROTATION_TRAFFIC_PROTECT_GB,
+        1,
+        10000,
+        "流量保护值",
+        float,
+    )
+
+    if rotation_enabled:
+        if len(rotation_ids) < 2:
+            raise HTTPException(status_code=400, detail="请至少选择两台抢占式实例参与轮换")
+        if len(set(rotation_ids)) != len(rotation_ids):
+            raise HTTPException(status_code=400, detail="轮换实例不能重复")
+        if rotation_active not in set(rotation_ids):
+            raise HTTPException(status_code=400, detail="当前当班实例必须在轮换列表中")
+
+        result = await db.execute(
+            select(Instance).where(Instance.instance_id.in_(rotation_ids))
+        )
+        rotation_instances = result.scalars().all()
+        if len(rotation_instances) != len(rotation_ids):
+            raise HTTPException(status_code=400, detail="部分轮换实例不存在，请先同步实例")
+        non_spot = [instance.instance_id for instance in rotation_instances if not instance.is_spot]
+        if non_spot:
+            raise HTTPException(
+                status_code=400,
+                detail=f"只有抢占式实例可以参与轮换：{', '.join(non_spot)}",
+            )
+        if len({instance.account_id for instance in rotation_instances}) != len(rotation_instances):
+            raise HTTPException(
+                status_code=400,
+                detail="每个阿里云账号只能选择一台实例参与轮换",
+            )
+
+        cloudflare_token = submitted_values.get("cloudflare_api_token", "").strip() or existing_values.get("cloudflare_api_token", "")
+        if not cloudflare_token:
+            raise HTTPException(status_code=400, detail="请填写 Cloudflare API Token")
+        if not merged_values.get("cloudflare_zone_id", "").strip():
+            raise HTTPException(status_code=400, detail="请填写 Cloudflare Zone ID")
+        if not merged_values.get("cloudflare_record_name", "").strip():
+            raise HTTPException(status_code=400, detail="请填写需要更新的完整域名")
+
+    normalized_rotation = {
+        "rotation_enabled": "1" if rotation_enabled else "0",
+        "rotation_instance_ids": json.dumps(rotation_ids, ensure_ascii=False),
+        "rotation_instance_a": rotation_ids[0] if rotation_ids else "",
+        "rotation_instance_b": rotation_ids[1] if len(rotation_ids) > 1 else "",
+        "rotation_active_instance_id": rotation_active,
+        "rotation_switch_time": rotation_time,
+        "rotation_grace_seconds": str(rotation_grace),
+        "rotation_timeout_seconds": str(rotation_timeout),
+        "rotation_traffic_protect_gb": str(rotation_protect),
+    }
+    submitted_values.update(normalized_rotation)
+
+    existing_rotation_ids = parse_rotation_ids(existing_values)
+    targets_changed = (
+        existing_rotation_ids != rotation_ids
+        or existing_values.get("rotation_active_instance_id", "") != rotation_active
+    )
+    just_enabled = existing_values.get("rotation_enabled", "0") != "1" and rotation_enabled
+    if rotation_enabled and (just_enabled or targets_changed):
+        submitted_values["rotation_last_switch_date"] = ""
+
+    for key, submitted_value in submitted_values.items():
+        value = submitted_value
+        if key == "keep_alive_interval_minutes":
             try:
                 keep_alive_interval = int(value)
             except (TypeError, ValueError):
@@ -307,18 +427,48 @@ async def update_settings(items: List[SettingUpdate], user=Depends(get_current_u
                 )
             value = str(keep_alive_interval)
 
-        result = await db.execute(select(Settings).where(Settings.key == item.key))
+        if key in SECRET_SETTING_KEYS and not str(value).strip():
+            continue
+
+        result = await db.execute(select(Settings).where(Settings.key == key))
         row = result.scalar_one_or_none()
         if row:
             row.value = value
         else:
-            db.add(Settings(key=item.key, value=value))
+            db.add(Settings(key=key, value=value))
     await db.commit()
     if keep_alive_interval is not None:
         await configure_keep_alive_job(keep_alive_interval)
     return {
         "message": "保存成功",
         "keep_alive_interval_minutes": keep_alive_interval,
+    }
+
+
+@app.post("/api/settings/test-cloudflare")
+async def test_cloudflare(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Settings).where(
+            Settings.key.in_(
+                ["cloudflare_api_token", "cloudflare_zone_id", "cloudflare_record_name"]
+            )
+        )
+    )
+    values = {row.key: row.value for row in result.scalars().all()}
+    token = values.get("cloudflare_api_token", "")
+    zone_id = values.get("cloudflare_zone_id", "")
+    record_name = values.get("cloudflare_record_name", "")
+    if not token or not zone_id or not record_name:
+        raise HTTPException(status_code=400, detail="请先保存完整的 Cloudflare DDNS 配置")
+    try:
+        record = await CloudflareDNSClient(token, zone_id).get_a_record(record_name)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Cloudflare 验证失败: {exc}")
+    return {
+        "message": "Cloudflare 连接成功",
+        "record_name": record.get("name"),
+        "content": record.get("content"),
+        "proxied": bool(record.get("proxied")),
     }
 
 

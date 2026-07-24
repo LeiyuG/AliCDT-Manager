@@ -1,23 +1,29 @@
 <template>
-  <div class="relative flex flex-col p-5 rounded-2xl bg-surface/40 backdrop-blur-lg border border-border/50 shadow-sm hover:shadow-lg hover:-translate-y-0.5 hover:border-accent/40 transition-all duration-300 group/card">
+  <div class="relative flex flex-col p-4 sm:p-5 rounded-2xl bg-surface/40 backdrop-blur-lg border border-border/50 shadow-sm hover:shadow-lg hover:-translate-y-0.5 hover:border-accent/40 transition-all duration-300 group/card">
 
     <!-- 拖拽手柄 -->
-    <div class="flex justify-center mb-3 opacity-0 group-hover/card:opacity-100 transition-opacity cursor-grab active:cursor-grabbing">
+    <div class="hidden lg:flex justify-center mb-3 opacity-0 group-hover/card:opacity-100 transition-opacity cursor-grab active:cursor-grabbing">
       <div class="flex gap-0.5 items-center">
         <div v-for="i in 6" :key="i" class="w-0.5 h-3 bg-border rounded-full"></div>
       </div>
     </div>
 
-    <div class="flex items-start justify-between gap-4">
+    <div class="flex items-start justify-between gap-2.5">
       <div class="flex-1 min-w-0">
         <div v-if="!editingName"
-          class="flex items-center gap-2 cursor-pointer group/edit"
+          class="relative flex items-center cursor-pointer group/edit"
           @click="startEditName">
-          <h3 class="text-base font-semibold text-text truncate transition-colors group-hover/edit:text-accent">
+          <h3
+            class="text-base font-semibold text-text truncate transition-colors group-hover/edit:text-accent"
+            :title="instance.remark || instance.instance_name || instance.instance_id"
+          >
             {{ instance.remark || instance.instance_name || instance.instance_id }}
           </h3>
-          <span class="opacity-0 group-hover/edit:opacity-100 text-text-muted transition-opacity text-xs bg-surface-hover px-1.5 py-0.5 rounded-md border border-border whitespace-nowrap flex-shrink-0">
-            {{ instance.remark ? '编辑备注' : '添加备注' }}
+          <span
+            class="absolute left-full ml-1 opacity-0 group-hover/edit:opacity-100 text-text-muted transition-opacity text-xs bg-surface-hover px-1.5 py-0.5 rounded-md border border-border whitespace-nowrap pointer-events-none"
+            aria-hidden="true"
+          >
+            ✎
           </span>
         </div>
         <div v-else class="flex items-center gap-2">
@@ -38,17 +44,21 @@
           </div>
         </div>
         <div class="text-xs text-text-muted font-mono mt-1 truncate opacity-80">ID: {{ instance.instance_id }}</div>
-        <div v-if="instance.instance_name" class="text-[11px] text-text-muted mt-1 truncate opacity-60">
+        <div v-if="instance.instance_name" class="text-xs text-text-muted mt-1 truncate opacity-80">
           阿里云名称: {{ instance.instance_name }}
         </div>
       </div>
 
       <div class="flex flex-col items-end gap-1.5 flex-shrink-0">
-        <div class="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-surface/50 border border-border/50" :title="regionLabel">
+        <div
+          class="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-surface/50 border border-border/50"
+          :title="instance.is_spot ? `${regionLabel} · 抢占式实例` : regionLabel"
+        >
+          <span v-if="instance.is_spot" class="text-accent text-xs" aria-label="抢占式实例">⚡</span>
           <span class="text-base leading-none drop-shadow-sm font-emoji">{{ regionFlag }}</span>
           <span class="text-xs text-text font-medium">{{ instance.region_id || '未知' }}</span>
         </div>
-        <div class="px-2 py-0.5 rounded-full text-[11px] font-medium tracking-wide flex items-center gap-1.5 border border-transparent shadow-sm" :class="statusBadge">
+        <div class="px-2 py-0.5 rounded-full text-xs font-medium tracking-wide flex items-center gap-1.5 border border-transparent shadow-sm" :class="statusBadge">
           <span class="w-1.5 h-1.5 rounded-full animate-pulse" :class="instance.status === 'Running' ? 'bg-current' : 'bg-current opacity-50'"></span>
           {{ statusLabel.replace('● ', '') }}
         </div>
@@ -69,7 +79,7 @@
           <div class="absolute inset-0 bg-white/20 w-full animate-pulse"></div>
         </div>
       </div>
-      <div class="flex justify-between text-[11px] mt-2">
+      <div class="flex justify-between text-xs mt-2">
         <span class="text-text-muted">熔断阈值 <span class="font-medium text-text">{{ account?.threshold_percent || 95 }}%</span></span>
         <span :class="trafficColor" class="font-medium">{{ (instance.traffic_percent || 0).toFixed(1) }}%</span>
       </div>
@@ -77,17 +87,17 @@
 
     <div class="grid grid-cols-2 gap-2 mt-4 text-xs">
       <div class="bg-surface-hover/40 border border-border/40 rounded-xl px-3 py-2.5 hover:bg-surface-hover/60 transition-colors">
-        <div class="text-text-muted mb-1 text-[11px] uppercase tracking-wider">公网 IP</div>
-        <div class="font-mono text-text font-medium">{{ instance.public_ip || '—' }}</div>
+        <div class="text-text-muted mb-1 text-xs uppercase tracking-wider">公网 IP</div>
+        <div class="font-mono text-text text-[12px] font-medium tracking-tight whitespace-nowrap">{{ instance.public_ip || '—' }}</div>
       </div>
       <div class="bg-surface-hover/40 border border-border/40 rounded-xl px-3 py-2.5 hover:bg-surface-hover/60 transition-colors">
-        <div class="text-text-muted mb-1 text-[11px] uppercase tracking-wider">规格</div>
+        <div class="text-text-muted mb-1 text-xs uppercase tracking-wider">规格</div>
         <div class="text-text font-medium truncate" :title="instance.instance_type">{{ instance.instance_type || '—' }}</div>
       </div>
     </div>
 
-    <div class="flex flex-wrap gap-2 mt-4 text-[11px]">
-      <span v-if="account?.keep_alive"
+    <div class="flex flex-wrap gap-2 mt-4 text-xs">
+      <span v-if="account?.keep_alive && account?.instance_id === instance.instance_id && instance.is_spot"
         class="px-2.5 py-1 rounded-md bg-accent/10 border border-accent/20 text-accent font-medium flex items-center gap-1.5 shadow-sm">
         <span class="w-1.5 h-1.5 bg-accent rounded-full animate-ping inline-block"></span>
         自动保活中
@@ -129,14 +139,14 @@
 
     <div class="flex-1"></div>
 
-    <div class="flex items-center justify-between text-[11px] text-text-muted mt-5 mb-3 px-1">
-      <span class="flex items-center gap-1"><span class="text-xs">🔑</span> {{ account?.name || '未知账户' }}</span>
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-text-muted mt-5 mb-3 px-1">
+      <span class="flex items-center gap-1 min-w-0"><span class="text-xs">🔑</span> <span class="truncate">{{ account?.name || '未知账户' }}</span></span>
       <div class="flex items-center gap-2">
         <span v-if="instance.last_synced" class="opacity-70">同步于 {{ formatTime(instance.last_synced) }}</span>
         <button @click="syncThis" :disabled="isSyncing"
           class="flex items-center gap-1 px-2 py-0.5 rounded-md bg-surface border border-border hover:border-accent/40 hover:text-accent transition-all disabled:opacity-50">
           <span :class="isSyncing ? 'animate-spin' : ''" class="text-xs">🔄</span>
-          <span class="text-[10px]">{{ isSyncing ? '同步中' : '同步' }}</span>
+          <span class="text-xs">{{ isSyncing ? '同步中' : '同步' }}</span>
         </button>
       </div>
     </div>
@@ -166,10 +176,6 @@
         <span v-if="isStopping" class="w-3 h-3 border-2 border-text-muted border-t-transparent rounded-full animate-spin"></span>
         <span>{{ isStopping ? '停止中...' : '⏹ 停止实例' }}</span>
       </button>
-      <button @click="$emit('release')"
-        class="text-xs font-medium px-4 py-2.5 rounded-xl bg-danger/5 border border-danger/10 hover:bg-danger hover:text-white text-danger transition-all duration-200 shadow-sm hover:shadow-danger/30 active:scale-95">
-        释放
-      </button>
     </div>
 
   </div>
@@ -180,7 +186,6 @@ import { ref, computed, onMounted } from 'vue'
 import { useStore } from '../stores'
 
 const props = defineProps({ instance: Object, account: Object })
-defineEmits(['release'])
 
 const store = useStore()
 const billing = ref(null)

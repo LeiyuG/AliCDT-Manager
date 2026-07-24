@@ -21,8 +21,12 @@ export default {
         'text-muted': 'rgb(var(--color-text-muted) / <alpha-value>)',
       },
       fontFamily: {
-        sans: ['-apple-system', 'BlinkMacSystemFont', 'SF Pro Display', 'Inter', 'sans-serif'],
+        sans: ['-apple-system', 'BlinkMacSystemFont', 'SF Pro Text', 'Inter', 'sans-serif'],
         mono: ['SF Mono', 'JetBrains Mono', 'monospace'],
+      },
+      fontSize: {
+        xs: ['0.8125rem', { lineHeight: '1.45rem' }],
+        sm: ['0.9375rem', { lineHeight: '1.5rem' }],
       },
       borderRadius: {
         xl: '1rem',

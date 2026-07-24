@@ -21,9 +21,40 @@
     </div>
 
     <!-- 主应用台 -->
-    <div v-else class="flex min-h-screen">
+    <div v-else class="min-h-screen lg:flex">
+      <!-- 移动端顶部栏 -->
+      <header class="lg:hidden fixed inset-x-0 top-0 z-40 h-16 px-4 flex items-center justify-between bg-surface/90 backdrop-blur-xl border-b border-border/70">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <div class="w-9 h-9 rounded-xl bg-accent/10 flex items-center justify-center border border-accent/20 flex-shrink-0">
+            <span class="text-lg">🛡️</span>
+          </div>
+          <div class="min-w-0">
+            <div class="text-sm font-bold truncate">AliCDT Manager</div>
+            <div class="text-xs text-text-muted">{{ currentPageLabel }}</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-1">
+          <button
+            type="button"
+            class="w-10 h-10 rounded-xl text-text-muted hover:text-accent hover:bg-accent/10 transition-colors"
+            :aria-label="theme === 'light' ? '切换到深色主题' : '切换到浅色主题'"
+            @click="toggleTheme"
+          >
+            {{ theme === 'light' ? '🌙' : '☀️' }}
+          </button>
+          <button
+            type="button"
+            class="w-10 h-10 rounded-xl text-text-muted hover:text-danger hover:bg-danger/10 transition-colors"
+            aria-label="退出登录"
+            @click="logout"
+          >
+            🚪
+          </button>
+        </div>
+      </header>
+
       <!-- 侧边栏 -->
-      <aside class="w-64 flex-shrink-0 flex flex-col bg-surface/80 backdrop-blur-xl border-r border-border fixed h-full z-30 transition-all duration-300">
+      <aside class="hidden lg:flex w-64 flex-shrink-0 flex-col bg-surface/80 backdrop-blur-xl border-r border-border fixed h-full z-30 transition-all duration-300">
         <!-- Logo区 -->
         <div class="h-20 flex items-center px-6 border-b border-border/50">
           <div class="flex items-center gap-3">
@@ -76,8 +107,8 @@
       </aside>
 
       <!-- 主内容区 -->
-      <main class="ml-64 flex-1 min-h-screen bg-background relative overflow-x-hidden">
-        <div class="p-8 max-w-7xl mx-auto">
+      <main class="lg:ml-64 flex-1 min-h-screen bg-background relative overflow-x-hidden">
+        <div class="px-3 pt-20 pb-28 sm:px-5 lg:p-8 max-w-7xl mx-auto">
           <!-- 路由过渡动画 -->
           <router-view v-slot="{ Component }">
             <transition name="fade-slide" mode="out-in">
@@ -86,6 +117,28 @@
           </router-view>
         </div>
       </main>
+
+      <!-- 移动端底部导航 -->
+      <nav class="lg:hidden fixed inset-x-0 bottom-0 z-40 bg-surface/95 backdrop-blur-xl border-t border-border/70 pb-[env(safe-area-inset-bottom)]">
+        <div class="grid grid-cols-4 h-16">
+          <button
+            v-for="item in navItems"
+            :key="item.path"
+            type="button"
+            class="flex flex-col items-center justify-center gap-1 text-xs transition-colors"
+            :class="routeMatches(item.path) ? 'text-accent' : 'text-text-muted'"
+            @click="navigate(item.path)"
+          >
+            <span
+              class="w-8 h-7 rounded-lg flex items-center justify-center text-base transition-colors"
+              :class="routeMatches(item.path) ? 'bg-accent/10' : ''"
+            >
+              {{ item.icon }}
+            </span>
+            <span>{{ item.label }}</span>
+          </button>
+        </div>
+      </nav>
     </div>
   </div>
 </template>
@@ -112,12 +165,16 @@ const navItems = [
 // 智能计算激活状态：废弃容易脱节的 watch，改用纯 computed
 // 增加了对子路由（如 /accounts/detail）的高亮支持
 const activeIndex = computed(() => {
-  const index = navItems.findIndex(item => {
-    if (item.path === '/') return route.path === '/'
-    return route.path.startsWith(item.path)
-  })
+  const index = navItems.findIndex(item => routeMatches(item.path))
   return index === -1 ? 0 : index
 })
+
+const currentPageLabel = computed(() => navItems[activeIndex.value]?.label || '控制台')
+
+function routeMatches(path) {
+  if (path === '/') return route.path === '/'
+  return route.path.startsWith(path)
+}
 
 function navigate(path) {
   router.push(path)

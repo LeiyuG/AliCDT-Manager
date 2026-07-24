@@ -1,20 +1,20 @@
 <template>
-  <div class="p-6 space-y-6 fade-in">
+  <div class="p-0 sm:p-2 lg:p-6 space-y-5 sm:space-y-6 fade-in">
     <!-- 顶部栏 -->
-    <div class="flex items-center justify-between">
+    <div class="flex items-start justify-between gap-3">
       <div>
         <h1 class="text-xl font-semibold text-text">总览</h1>
         <p class="text-sm text-text-muted mt-0.5">{{ now }}</p>
       </div>
       <button @click="sync" :disabled="store.loading"
-        class="btn-primary flex items-center gap-2">
+        class="btn-primary flex items-center gap-2 flex-shrink-0 px-3 sm:px-4">
         <span :class="store.loading ? 'animate-spin' : ''">🔄</span>
         {{ store.loading ? '同步中...' : '立即同步' }}
       </button>
     </div>
 
     <!-- 统计卡片 -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
       <StatCard icon="🖥️" label="实例总数" :value="instances.length" />
       <StatCard icon="✅" label="运行中" :value="runningCount" color="success" />
       <StatCard icon="⏹️" label="已停机" :value="stoppedCount" color="danger" />
@@ -29,12 +29,12 @@
 
     <div
       v-else
-      class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4"
+      class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4"
     >
       <div
         v-for="inst in sortedInstances"
         :key="inst.instance_id"
-        draggable="true"
+        :draggable="canDrag"
         @dragstart="onDragStart($event, inst.instance_id)"
         @dragover.prevent="onDragOver($event, inst.instance_id)"
         @dragend="onDragEnd"
@@ -54,26 +54,9 @@
           :account="accountMap[inst.account_id]"
           @start="store.controlInstance(inst.instance_id, 'start')"
           @stop="store.controlInstance(inst.instance_id, 'stop')"
-          @release="confirmRelease(inst)"
         />
       </div>
     </div>
-
-    <!-- 释放确认弹窗 -->
-    <Modal v-if="releaseTarget" @close="releaseTarget = null">
-      <div class="text-center space-y-4">
-        <div class="text-4xl">⚠️</div>
-        <div class="font-semibold">确认释放实例？</div>
-        <div class="text-sm text-text-muted">{{ releaseTarget.instance_id }}</div>
-        <div class="text-xs text-danger bg-danger/10 border border-danger/20 rounded-lg px-3 py-2">
-          此操作不可撤销，实例将被永久删除
-        </div>
-        <div class="flex gap-3">
-          <button @click="releaseTarget = null" class="btn-ghost flex-1">取消</button>
-          <button @click="doRelease" class="btn-danger flex-1">确认释放</button>
-        </div>
-      </div>
-    </Modal>
   </div>
 </template>
 
@@ -82,11 +65,10 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useStore } from '../stores'
 import StatCard from '../components/StatCard.vue'
 import InstanceCard from '../components/InstanceCard.vue'
-import Modal from '../components/Modal.vue'
 
 const store = useStore()
-const releaseTarget = ref(null)
 const now = ref('')
+const canDrag = ref(true)
 
 // 拖拽状态
 const draggingId = ref(null)
@@ -164,6 +146,7 @@ function updateTime() {
 
 let timer
 onMounted(async () => {
+  canDrag.value = window.matchMedia('(min-width: 1024px) and (pointer: fine)').matches
   await store.fetchAccounts()
   await store.fetchInstances()
   updateTime()
@@ -173,17 +156,5 @@ onUnmounted(() => clearInterval(timer))
 
 async function sync() {
   await store.syncAll()
-}
-
-function confirmRelease(inst) {
-  releaseTarget.value = inst
-}
-
-async function doRelease() {
-  await store.releaseInstance(releaseTarget.value.instance_id)
-  releaseTarget.value = null
-  // 清理排序中已释放的实例
-  customOrder.value = customOrder.value.filter(id => id !== releaseTarget.value?.instance_id)
-  localStorage.setItem(SORT_KEY, JSON.stringify(customOrder.value))
 }
 </script>

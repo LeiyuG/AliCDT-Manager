@@ -1,8 +1,8 @@
 <template>
-  <div class="p-6 space-y-6 fade-in">
-    <div class="flex items-center justify-between">
+  <div class="p-0 sm:p-2 lg:p-6 space-y-5 sm:space-y-6 fade-in">
+    <div class="flex items-center justify-between gap-3">
       <h1 class="text-xl font-semibold text-text">账户管理</h1>
-      <button @click="openAdd" class="btn-primary flex items-center gap-2">
+      <button @click="openAdd" class="btn-primary flex items-center gap-1.5 flex-shrink-0 px-3 sm:px-4">
         <span>＋</span> 添加账户
       </button>
     </div>
@@ -12,16 +12,16 @@
         暂无账户，点击右上角添加
       </div>
 
-      <div v-for="acc in store.accounts" :key="acc.id" class="card p-5">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-3">
+      <div v-for="acc in store.accounts" :key="acc.id" class="card p-4 sm:p-5">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="flex items-center gap-3 min-w-0">
             <div class="w-9 h-9 rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center text-sm">🔑</div>
-            <div>
+            <div class="min-w-0">
               <div class="font-medium text-text text-sm">{{ acc.name }}</div>
-              <div class="text-xs text-text-muted font-mono mt-0.5">{{ acc.access_key_id }}</div>
+              <div class="text-xs text-text-muted font-mono mt-0.5 truncate">{{ acc.access_key_id }}</div>
             </div>
           </div>
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-1.5 flex-wrap">
             <span class="text-xs px-2 py-0.5 rounded-full bg-surface border border-border text-text-muted">{{ acc.region_id }}</span>
             <span v-if="acc.keep_alive" class="text-xs px-2 py-0.5 rounded-full bg-accent/10 text-accent">保活</span>
             <button @click="openEdit(acc)" class="btn-ghost text-xs px-2 py-1">编辑</button>
@@ -29,7 +29,7 @@
           </div>
         </div>
 
-        <div class="grid grid-cols-4 gap-3 mt-4 text-xs">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 mt-4 text-xs">
           <div class="bg-surface rounded-lg px-3 py-2">
             <div class="text-text-muted mb-0.5">流量上限</div>
             <div class="text-text">{{ acc.traffic_limit_gb }} GB</div>
@@ -69,7 +69,7 @@
             </label>
             <input v-model="form.access_key_secret" type="password" class="input" placeholder="••••••••" />
           </div>
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="text-xs text-text-muted mb-1 block">地域 ID *</label>
               <input v-model="form.region_id" class="input" placeholder="ap-southeast-1" />
@@ -86,7 +86,7 @@
             <label class="text-xs text-text-muted mb-1 block">实例 ID（用于保活/定时任务）</label>
             <input v-model="form.instance_id" class="input" placeholder="i-..." />
           </div>
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="text-xs text-text-muted mb-1 block">流量上限 (GB)</label>
               <input v-model.number="form.traffic_limit_gb" type="number" class="input" />
@@ -99,7 +99,7 @@
           <div>
             <label class="text-xs text-text-muted mb-1 block">待还金额熔断阈值（0表示不启用）</label>
             <input v-model.number="form.outstanding_threshold" type="number" step="0.01" class="input" placeholder="例如 0.45" />
-            <div class="text-[11px] text-text-muted mt-1">当账户待还款金额达到此数值时自动停机</div>
+            <div class="text-xs text-text-muted mt-1">当账户待还款金额达到此数值时自动停机</div>
           </div>
           <div>
             <label class="text-xs text-text-muted mb-1 block">停机模式</label>
@@ -118,7 +118,7 @@
             <span class="text-sm text-text">开启抢占式保活</span>
           </label>
 
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="text-xs text-text-muted mb-1 block">定时关机</label>
               <input v-model="form.auto_stop_time" type="time" class="input" />

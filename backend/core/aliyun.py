@@ -158,6 +158,35 @@ class AliyunClient:
             })
         return result
 
+    async def get_instance(self, instance_id: str) -> Optional[dict]:
+        params = _build_params(
+            "DescribeInstances", self.key_id, self.key_secret,
+            "2014-05-26", {
+                "RegionId": self.region_id,
+                "InstanceIds": f'["{instance_id}"]',
+                "PageSize": "10",
+            }
+        )
+        data = await _post(self.ecs_host, params)
+        instances = data.get("Instances", {}).get("Instance", [])
+        if not instances:
+            return None
+        inst = instances[0]
+        ip_list = inst.get("PublicIpAddress", {}).get("IpAddress", [])
+        eip = inst.get("EipAddress", {}).get("IpAddress", "")
+        public_ip = eip or (ip_list[0] if ip_list else "")
+        bandwidth = inst.get("InternetMaxBandwidthOut", 0)
+        return {
+            "instance_id": inst.get("InstanceId"),
+            "instance_name": inst.get("InstanceName"),
+            "status": inst.get("Status"),
+            "public_ip": public_ip,
+            "instance_type": inst.get("InstanceType"),
+            "region_id": inst.get("RegionId"),
+            "is_spot": inst.get("SpotStrategy", "NoSpot") != "NoSpot",
+            "bandwidth_mbps": int(bandwidth) if bandwidth else 0,
+        }
+
     async def get_instance_status(self, instance_id: str) -> str:
         params = _build_params(
             "DescribeInstanceStatus", self.key_id, self.key_secret,
@@ -185,17 +214,6 @@ class AliyunClient:
                 "InstanceId": instance_id,
                 "StoppedMode": mode,
                 "ForceStop": "false",
-            }
-        )
-        await _post(self.ecs_host, params)
-        return True
-
-    async def delete_instance(self, instance_id: str) -> bool:
-        params = _build_params(
-            "DeleteInstance", self.key_id, self.key_secret,
-            "2014-05-26", {
-                "InstanceId": instance_id,
-                "Force": "true",
             }
         )
         await _post(self.ecs_host, params)
