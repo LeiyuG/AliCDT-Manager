@@ -220,11 +220,24 @@
           <span v-if="saving" class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
           {{ saving ? '保存中...' : '保存轮换设置' }}
         </button>
-        <button @click="testCloudflare" :disabled="cfTesting"
+        <button @click="testCloudflare" :disabled="cfTesting || saving"
           class="btn-ghost justify-center flex items-center gap-2 border border-border px-3 py-2 rounded-xl">
           <span v-if="cfTesting" class="w-4 h-4 border-2 border-accent/30 border-t-accent rounded-full animate-spin"></span>
-          {{ cfTesting ? '验证中...' : '☁️ 验证 Cloudflare' }}
+          {{ cfTesting ? '正在保存并验证...' : '☁️ 保存并验证 Cloudflare' }}
         </button>
+      </div>
+      <div
+        v-if="cloudflareMsg"
+        class="text-xs rounded-lg px-3 py-2.5 border leading-relaxed"
+        :class="cloudflareMsg.startsWith('❌')
+          ? 'text-danger bg-danger/10 border-danger/20'
+          : cloudflareMsg.startsWith('⏳')
+            ? 'text-accent bg-accent/10 border-accent/20'
+            : 'text-success bg-success/10 border-success/20'"
+        role="status"
+        aria-live="polite"
+      >
+        {{ cloudflareMsg }}
       </div>
     </div>
 
@@ -315,6 +328,7 @@ const testing = ref(false)
 const reportTesting = ref(false)
 const cfTesting = ref(false)
 const msg = ref('')
+const cloudflareMsg = ref('')
 const newPassword = ref('')
 const cloudflareTokenConfigured = ref(false)
 const cloudflareKeyConfigured = ref(false)
@@ -480,7 +494,7 @@ function settingsItems() {
 
 async function testCloudflare() {
   cfTesting.value = true
-  msg.value = ''
+  cloudflareMsg.value = '⏳ 正在保存配置并连接 Cloudflare，请稍候…'
   try {
     const items = settingsItems()
     await axios.post('/api/settings', items, { headers: authHeader() })
@@ -492,12 +506,12 @@ async function testCloudflare() {
       cloudflareKeyConfigured.value = true
       form.value.cloudflare_auth_key = ''
     }
-    msg.value = `✅ Cloudflare 连接成功：${data.record_name} → ${data.content}`
+    const proxyStatus = data.proxied ? '，Cloudflare 代理已开启' : '，仅 DNS'
+    cloudflareMsg.value = `✅ 验证成功：${data.record_name} → ${data.content}${proxyStatus}`
   } catch (e) {
-    msg.value = '❌ Cloudflare 验证失败：' + (e.response?.data?.detail || e.message)
+    cloudflareMsg.value = '❌ 验证失败：' + (e.response?.data?.detail || e.message)
   } finally {
     cfTesting.value = false
-    setTimeout(() => msg.value = '', 5000)
   }
 }
 
