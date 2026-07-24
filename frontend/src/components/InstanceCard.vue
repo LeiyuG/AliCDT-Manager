@@ -1,5 +1,5 @@
 <template>
-  <div class="relative flex flex-col p-4 sm:p-5 rounded-2xl bg-surface/40 backdrop-blur-lg border border-border/50 shadow-sm hover:shadow-lg hover:-translate-y-0.5 hover:border-accent/40 transition-all duration-300 group/card">
+  <div class="relative h-full flex flex-col p-4 sm:p-5 rounded-2xl bg-surface/40 backdrop-blur-lg border border-border/50 shadow-sm hover:shadow-lg hover:-translate-y-0.5 hover:border-accent/40 transition-all duration-300 group/card">
 
     <!-- 拖拽手柄 -->
     <div class="hidden lg:flex justify-center mb-3 opacity-0 group-hover/card:opacity-100 transition-opacity cursor-grab active:cursor-grabbing">
@@ -11,16 +11,16 @@
     <div class="flex items-start justify-between gap-2.5">
       <div class="flex-1 min-w-0">
         <div v-if="!editingName"
-          class="relative flex items-center cursor-pointer group/edit"
+          class="inline-flex max-w-full items-center cursor-pointer group/edit"
           @click="startEditName">
           <h3
-            class="text-base font-semibold text-text truncate transition-colors group-hover/edit:text-accent"
+            class="min-w-0 text-base font-semibold text-text truncate transition-colors group-hover/edit:text-accent"
             :title="instance.remark || instance.instance_name || instance.instance_id"
           >
             {{ instance.remark || instance.instance_name || instance.instance_id }}
           </h3>
           <span
-            class="absolute left-full ml-1 opacity-0 group-hover/edit:opacity-100 text-text-muted transition-opacity text-xs bg-surface-hover px-1.5 py-0.5 rounded-md border border-border whitespace-nowrap pointer-events-none"
+            class="ml-1 flex-shrink-0 opacity-0 group-hover/edit:opacity-100 text-text-muted transition-opacity text-xs bg-surface-hover px-1.5 py-0.5 rounded-md border border-border whitespace-nowrap pointer-events-none"
             aria-hidden="true"
           >
             ✎
@@ -95,7 +95,7 @@
       </div>
     </div>
 
-    <div class="flex flex-wrap gap-2 mt-4 text-xs">
+    <div class="flex flex-wrap content-start gap-2 mt-4 text-xs sm:min-h-[68px]">
       <span v-if="instance.is_spot"
         class="px-2.5 py-1 rounded-md bg-surface border border-border text-text-muted font-medium flex items-center gap-1 shadow-sm">
         <span class="text-accent">⚡</span>
@@ -126,7 +126,7 @@
       </span>
     </div>
 
-    <div class="mt-4 bg-gradient-to-br from-surface to-surface-hover/50 border border-border/50 rounded-xl px-3.5 py-3 text-xs shadow-sm">
+    <div class="mt-4 min-h-[104px] bg-gradient-to-br from-surface to-surface-hover/50 border border-border/50 rounded-xl px-3.5 py-3 text-xs shadow-sm">
       <div class="flex justify-between items-center mb-2">
         <span class="text-text-muted font-semibold tracking-wide">账单动态</span>
         <span v-if="billingLoading" class="w-3 h-3 border-2 border-accent border-t-transparent rounded-full animate-spin"></span>
@@ -194,7 +194,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useStore } from '../stores'
 
 const props = defineProps({
@@ -207,8 +207,8 @@ const props = defineProps({
 })
 
 const store = useStore()
-const billing = ref(null)
-const billingLoading = ref(false)
+const billing = ref(props.account ? store.billingCache[props.account.id] || null : null)
+const billingLoading = ref(!billing.value)
 const billingError = ref('')
 const editingName = ref(false)
 const newName = ref('')
@@ -395,6 +395,9 @@ async function syncThis() {
   isSyncing.value = true
   try {
     await store.syncSingleInstance(props.instance.instance_id)
+    if (props.account) {
+      billing.value = await store.getBilling(props.account.id, true)
+    }
   } finally {
     isSyncing.value = false
   }
@@ -402,18 +405,27 @@ async function syncThis() {
 
 async function loadBilling() {
   if (!props.account) return
-  billingLoading.value = true
+  const hasCachedBilling = Boolean(billing.value)
+  if (!hasCachedBilling) billingLoading.value = true
   billingError.value = ''
   try {
     billing.value = await store.getBilling(props.account.id)
   } catch (e) {
-    billingError.value = '账单获取失败'
+    if (!hasCachedBilling) billingError.value = '账单获取失败'
   } finally {
     billingLoading.value = false
   }
 }
 
-onMounted(() => loadBilling())
+watch(
+  () => props.account?.id,
+  accountId => {
+    if (!accountId) return
+    billing.value = store.billingCache[accountId] || billing.value
+    loadBilling()
+  },
+  { immediate: true },
+)
 
 function formatTime(t) {
   if (!t) return ''

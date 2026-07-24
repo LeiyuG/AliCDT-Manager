@@ -119,8 +119,8 @@
         </p>
       </div>
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div>
+      <div class="grid min-w-0 grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="min-w-0">
           <label class="text-xs text-text-muted mb-1.5 block">当前当班实例</label>
           <select v-model="form.rotation_active_instance_id" class="input">
             <option value="">请选择</option>
@@ -136,21 +136,21 @@
             当前真正承载服务的实例；Cloudflare 域名会指向它，其余轮换实例保持节省停机。
           </div>
         </div>
-        <div>
+        <div class="min-w-0">
           <label class="text-xs text-text-muted mb-1.5 block">每日切换时间（北京时间）</label>
-          <input v-model="form.rotation_switch_time" type="time" class="input" />
+          <input v-model="form.rotation_switch_time" type="time" class="input min-w-0 max-w-full" />
         </div>
-        <div>
+        <div class="min-w-0">
           <label class="text-xs text-text-muted mb-1.5 block">流量保护值（GB）</label>
           <input v-model="form.rotation_traffic_protect_gb" type="number" min="1" step="0.1" class="input" />
           <div class="text-xs text-text-muted mt-1">当前账号达到该值时，提前切换到备用账号</div>
         </div>
-        <div>
+        <div class="min-w-0">
           <label class="text-xs text-text-muted mb-1.5 block">DDNS 切换缓冲（秒）</label>
           <input v-model="form.rotation_grace_seconds" type="number" min="0" max="600" class="input" />
           <div class="text-xs text-text-muted mt-1">建议 60～120 秒；此期间两台实例会短暂同时运行</div>
         </div>
-        <div>
+        <div class="min-w-0">
           <label class="text-xs text-text-muted mb-1.5 block">状态确认超时（秒）</label>
           <input v-model="form.rotation_timeout_seconds" type="number" min="60" max="900" class="input" />
         </div>

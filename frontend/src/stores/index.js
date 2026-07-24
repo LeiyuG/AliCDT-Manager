@@ -21,6 +21,7 @@ export const useStore = defineStore('main', () => {
   const accounts = ref([])
   const logs = ref([])
   const settings = ref({})
+  const billingCache = ref({})
   const loading = ref(false)
 
   async function login(username, password) {
@@ -80,8 +81,15 @@ export const useStore = defineStore('main', () => {
     })
   }
 
-  async function getBilling(accountId) {
+  async function getBilling(accountId, force = false) {
+    if (!force && billingCache.value[accountId]) {
+      return billingCache.value[accountId]
+    }
     const { data } = await api.get(`/billing/${accountId}`)
+    billingCache.value = {
+      ...billingCache.value,
+      [accountId]: data,
+    }
     return data
   }
 
@@ -117,11 +125,19 @@ export const useStore = defineStore('main', () => {
     await fetchInstances()
   }
 
+  async function saveInstanceOrder(instanceIds) {
+    await api.post('/instances/order', { instance_ids: instanceIds })
+    settings.value = {
+      ...settings.value,
+      instance_sort_order: JSON.stringify(instanceIds),
+    }
+  }
+
   return {
-    instances, accounts, logs, settings, loading,
+    instances, accounts, logs, settings, billingCache, loading,
     login, fetchInstances, fetchAccounts, fetchLogs, fetchSettings,
     syncAll, syncSingleInstance, controlInstance, getBilling,
     createAccount, updateAccount, deleteAccount, saveSettings, clearLogs,
-    updateInstanceRemark,
+    updateInstanceRemark, saveInstanceOrder,
   }
 })

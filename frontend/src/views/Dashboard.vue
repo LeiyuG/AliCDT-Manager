@@ -32,15 +32,15 @@
       class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4"
     >
       <div
-        v-for="inst in sortedInstances"
+        v-for="(inst, index) in sortedInstances"
         :key="inst.instance_id"
-        :draggable="canDrag"
+        :draggable="canDrag && !orderSaving"
         @dragstart="onDragStart($event, inst.instance_id)"
         @dragover.prevent="onDragOver($event, inst.instance_id)"
         @dragend="onDragEnd"
         @drop.prevent="onDrop($event, inst.instance_id)"
         :class="[
-          'transition-all duration-200',
+          'h-full flex flex-col transition-all duration-200',
           dragOverId === inst.instance_id && draggingId !== inst.instance_id
             ? 'scale-[1.02] opacity-80'
             : '',
@@ -49,6 +49,29 @@
             : '',
         ]"
       >
+        <div v-if="sortedInstances.length > 1" class="lg:hidden flex items-center justify-between px-1 mb-2 text-xs text-text-muted">
+          <span>顺序 {{ index + 1 }}</span>
+          <div class="flex items-center gap-1">
+            <button
+              type="button"
+              class="w-9 h-9 rounded-lg border border-border bg-surface text-text disabled:opacity-30"
+              :disabled="index === 0 || orderSaving"
+              :aria-label="`上移 ${inst.remark || inst.instance_name || inst.instance_id}`"
+              @click="moveInstance(index, -1)"
+            >
+              ↑
+            </button>
+            <button
+              type="button"
+              class="w-9 h-9 rounded-lg border border-border bg-surface text-text disabled:opacity-30"
+              :disabled="index === sortedInstances.length - 1 || orderSaving"
+              :aria-label="`下移 ${inst.remark || inst.instance_name || inst.instance_id}`"
+              @click="moveInstance(index, 1)"
+            >
+              ↓
+            </button>
+          </div>
+        </div>
         <InstanceCard
           :instance="inst"
           :account="accountMap[inst.account_id]"
@@ -70,6 +93,7 @@ import InstanceCard from '../components/InstanceCard.vue'
 const store = useStore()
 const now = ref('')
 const canDrag = ref(true)
+const orderSaving = ref(false)
 
 // 拖拽状态
 const draggingId = ref(null)
@@ -77,7 +101,7 @@ const dragOverId = ref(null)
 
 // 自定义排序（持久化到 localStorage）
 const SORT_KEY = 'instance_sort_order'
-const customOrder = ref(JSON.parse(localStorage.getItem(SORT_KEY) || '[]'))
+const customOrder = ref(parseOrder(localStorage.getItem(SORT_KEY)))
 
 const instances = computed(() => store.instances)
 const runningCount = computed(() => instances.value.filter(i => i.status === 'Running').length)
@@ -103,10 +127,26 @@ const sortedInstances = computed(() => {
   })
 })
 
-function saveOrder() {
-  const order = sortedInstances.value.map(i => i.instance_id)
+function parseOrder(rawValue) {
+  try {
+    const parsed = JSON.parse(rawValue || '[]')
+    return Array.isArray(parsed) ? parsed.filter(Boolean) : []
+  } catch {
+    return []
+  }
+}
+
+async function persistOrder(order) {
   customOrder.value = order
   localStorage.setItem(SORT_KEY, JSON.stringify(order))
+  orderSaving.value = true
+  try {
+    await store.saveInstanceOrder(order)
+  } catch (error) {
+    alert(error.response?.data?.detail || '实例顺序保存失败')
+  } finally {
+    orderSaving.value = false
+  }
 }
 
 function onDragStart(e, id) {
@@ -119,7 +159,7 @@ function onDragOver(e, id) {
   dragOverId.value = id
 }
 
-function onDrop(e, targetId) {
+async function onDrop(e, targetId) {
   const sourceId = draggingId.value
   if (!sourceId || sourceId === targetId) return
 
@@ -132,8 +172,15 @@ function onDrop(e, targetId) {
   order.splice(fromIdx, 1)
   order.splice(toIdx, 0, sourceId)
 
-  customOrder.value = order
-  localStorage.setItem(SORT_KEY, JSON.stringify(order))
+  await persistOrder(order)
+}
+
+async function moveInstance(index, direction) {
+  const order = sortedInstances.value.map(instance => instance.instance_id)
+  const targetIndex = index + direction
+  if (targetIndex < 0 || targetIndex >= order.length) return
+  ;[order[index], order[targetIndex]] = [order[targetIndex], order[index]]
+  await persistOrder(order)
 }
 
 function onDragEnd() {
@@ -153,6 +200,23 @@ onMounted(async () => {
     store.fetchInstances(),
     store.fetchSettings(),
   ])
+  const serverOrder = parseOrder(store.settings.instance_sort_order)
+  const knownIds = new Set(store.instances.map(instance => instance.instance_id))
+  const preferredOrder = serverOrder.length ? serverOrder : customOrder.value
+  const normalizedOrder = [
+    ...preferredOrder.filter(instanceId => knownIds.has(instanceId)),
+    ...store.instances
+      .map(instance => instance.instance_id)
+      .filter(instanceId => !preferredOrder.includes(instanceId)),
+  ]
+  if (
+    JSON.stringify(normalizedOrder) !== JSON.stringify(serverOrder)
+    || JSON.stringify(normalizedOrder) !== JSON.stringify(customOrder.value)
+  ) {
+    await persistOrder(normalizedOrder)
+  } else {
+    customOrder.value = normalizedOrder
+  }
   updateTime()
   timer = setInterval(updateTime, 1000)
 })

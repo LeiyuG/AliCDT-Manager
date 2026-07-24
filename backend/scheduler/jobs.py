@@ -968,18 +968,38 @@ async def _do_daily_report():
         else set()
     )
 
-    instances_by_account = {}
-    for inst in instances:
-        instances_by_account.setdefault(inst.account_id, []).append(inst)
-    for account_instances in instances_by_account.values():
-        account_instances.sort(key=lambda item: (item.id or 0, item.instance_id))
+    raw_instance_order = await get_setting("instance_sort_order", "[]")
+    try:
+        parsed_instance_order = json.loads(raw_instance_order)
+        instance_order = (
+            [str(instance_id) for instance_id in parsed_instance_order]
+            if isinstance(parsed_instance_order, list)
+            else []
+        )
+    except (TypeError, ValueError):
+        instance_order = []
+    order_index = {
+        instance_id: index
+        for index, instance_id in enumerate(instance_order)
+    }
+    instances.sort(
+        key=lambda item: (
+            order_index.get(item.instance_id, len(order_index)),
+            item.id or 0,
+            item.instance_id,
+        )
+    )
 
     enabled_account_ids = {account.id for account in accounts}
-    instance_count = sum(
-        len(account_instances)
-        for account_id, account_instances in instances_by_account.items()
-        if account_id in enabled_account_ids
-    )
+    enabled_instances = [
+        instance for instance in instances
+        if instance.account_id in enabled_account_ids
+    ]
+    instance_count = len(enabled_instances)
+    account_by_id = {account.id: account for account in accounts}
+    accounts_with_instances = {instance.account_id for instance in enabled_instances}
+    billing_by_account = {}
+    empty_account_blocks = []
 
     lines = [
         "📊 <b>每日流量汇报</b>",
@@ -989,7 +1009,6 @@ async def _do_daily_report():
     ]
 
     for account in accounts:
-        account_instances = instances_by_account.get(account.id, [])
         billing_line = "💰 账单获取失败"
         try:
             client = AliyunClient(
@@ -1004,41 +1023,45 @@ async def _do_daily_report():
             billing_line = f"💰 余额: {symbol}{avail}  待还: {symbol}{outst}"
         except Exception:
             pass
+        billing_by_account[account.id] = billing_line
 
-        if not account_instances:
-            lines.append(f"⚪ <b>{escape(account.name)}</b>\n  暂无实例数据")
-            lines.append("━━━━━━━━━━━━━━━━")
-            continue
+        if account.id not in accounts_with_instances:
+            empty_account_blocks.extend([
+                f"⚪ <b>{escape(account.name)}</b>\n  暂无实例数据",
+                "━━━━━━━━━━━━━━━━",
+            ])
 
-        for inst in account_instances:
-            status_icon = "🟢" if inst.status == "Running" else "🔴"
-            bar = build_traffic_bar(inst.traffic_percent, account.threshold_percent)
-            display_name = escape(inst.remark or inst.instance_id)
-            instance_id_line = f"  🆔 实例 ID: {escape(inst.instance_id)}\n" if inst.remark else ""
-            instance_kind = "抢占式实例" if inst.is_spot else "普通实例"
-            rotation_line = ""
-            if inst.instance_id in rotation_targets:
-                rotation_role = (
-                    "🟢 当前当班"
-                    if inst.instance_id == rotation_config["active_instance_id"]
-                    else "⚪ 轮换待机"
-                )
-                rotation_line = f"  🔁 轮换: {rotation_role}\n"
-            block = (
-                f"{status_icon} <b>{display_name}</b>\n"
-                f"{instance_id_line}"
-                f"  🌐 公网 IP: {escape(inst.public_ip or '—')}\n"
-                f"  🧩 类型: {instance_kind}\n"
-                f"{rotation_line}"
-                f"  🖥 状态: {inst.status}  地域: {escape(inst.region_id or '—')}\n"
-                f"  📡 账户流量: {inst.traffic_used_gb:.2f}GB / {account.traffic_limit_gb}GB\n"
-                f"  {bar}  {inst.traffic_percent:.1f}%\n"
-                f"  🛡 熔断阈值: {account.threshold_percent}%\n"
-                f"  {billing_line}"
+    for inst in enabled_instances:
+        account = account_by_id[inst.account_id]
+        status_icon = "🟢" if inst.status == "Running" else "🔴"
+        bar = build_traffic_bar(inst.traffic_percent, account.threshold_percent)
+        display_name = escape(inst.remark or inst.instance_id)
+        instance_id_line = f"  🆔 实例 ID: {escape(inst.instance_id)}\n" if inst.remark else ""
+        instance_kind = "抢占式实例" if inst.is_spot else "普通实例"
+        rotation_line = ""
+        if inst.instance_id in rotation_targets:
+            rotation_role = (
+                "🟢 当前当班"
+                if inst.instance_id == rotation_config["active_instance_id"]
+                else "⚪ 轮换待机"
             )
-            lines.append(block)
-            lines.append("━━━━━━━━━━━━━━━━")
+            rotation_line = f"  🔁 轮换: {rotation_role}\n"
+        block = (
+            f"{status_icon} <b>{display_name}</b>\n"
+            f"{instance_id_line}"
+            f"  🌐 公网 IP: {escape(inst.public_ip or '—')}\n"
+            f"  🧩 类型: {instance_kind}\n"
+            f"{rotation_line}"
+            f"  🖥 状态: {inst.status}  地域: {escape(inst.region_id or '—')}\n"
+            f"  📡 账户流量: {inst.traffic_used_gb:.2f}GB / {account.traffic_limit_gb}GB\n"
+            f"  {bar}  {inst.traffic_percent:.1f}%\n"
+            f"  🛡 熔断阈值: {account.threshold_percent}%\n"
+            f"  {billing_by_account[account.id]}"
+        )
+        lines.append(block)
+        lines.append("━━━━━━━━━━━━━━━━")
 
+    lines.extend(empty_account_blocks)
     await send_tg_notify("\n".join(lines))
     await add_important_log("system", "每日流量汇报已发送")
 

@@ -84,6 +84,13 @@ textarea {
   textarea {
     font-size: 16px !important;
   }
+
+  input[type='time'].input {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
 }
 
 ::-webkit-scrollbar { width: 4px; height: 4px; }

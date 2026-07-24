@@ -101,6 +101,10 @@ class RemarkRequest(BaseModel):
     remark: Optional[str] = None
 
 
+class InstanceOrderRequest(BaseModel):
+    instance_ids: List[str]
+
+
 @app.get("/api/auth/initialized")
 async def is_initialized(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Settings).where(Settings.key == "admin_password_hash"))
@@ -259,6 +263,36 @@ async def stop_instance(instance_id: str, user=Depends(get_current_user), db: As
     await db.commit()
     await add_important_log("system", f"手动关机: {instance_id}")
     return {"message": "关机指令已发送"}
+
+
+@app.post("/api/instances/order")
+async def save_instance_order(
+    data: InstanceOrderRequest,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    instance_ids = [str(instance_id).strip() for instance_id in data.instance_ids if str(instance_id).strip()]
+    if len(instance_ids) != len(set(instance_ids)):
+        raise HTTPException(status_code=400, detail="实例排序中不能包含重复项")
+
+    if instance_ids:
+        result = await db.execute(
+            select(Instance.instance_id).where(Instance.instance_id.in_(instance_ids))
+        )
+        existing_ids = set(result.scalars().all())
+        unknown_ids = [instance_id for instance_id in instance_ids if instance_id not in existing_ids]
+        if unknown_ids:
+            raise HTTPException(status_code=400, detail="实例排序中包含不存在的实例")
+
+    value = json.dumps(instance_ids, ensure_ascii=False)
+    result = await db.execute(select(Settings).where(Settings.key == "instance_sort_order"))
+    row = result.scalar_one_or_none()
+    if row:
+        row.value = value
+    else:
+        db.add(Settings(key="instance_sort_order", value=value))
+    await db.commit()
+    return {"message": "实例顺序已保存", "instance_ids": instance_ids}
 
 
 @app.get("/api/billing/{account_id}")
