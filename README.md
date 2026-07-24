@@ -90,16 +90,16 @@ ports:
 ## ✨ 界面截图
 
 ### 三列实例总览
-![三列实例总览](READMEimages/1.png)
+![脱敏后的浅色三列实例总览](READMEimages/light-overview-sanitized.jpg)
 
 ### 账户与自动计划
-![账户与自动计划](READMEimages/2.png)
+![脱敏后的浅色账户与自动计划](READMEimages/light-accounts-sanitized.jpg)
 
 ### 宽版账户设置
-![宽版账户设置](READMEimages/3.png)
+![脱敏后的浅色宽版账户设置](READMEimages/light-account-settings-sanitized.jpg)
 
 ### 多账号实例轮换
-![多账号实例轮换](READMEimages/5.png)
+![脱敏后的浅色多账号实例轮换](READMEimages/light-rotation-sanitized.jpg)
 
 ## 可选：Nginx / Cloudflare 配置示例
 

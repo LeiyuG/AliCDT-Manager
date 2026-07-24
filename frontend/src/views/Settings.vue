@@ -206,12 +206,12 @@
           </div>
           <div>
             <label class="text-xs text-text-muted mb-1.5 block">A 记录名称</label>
-            <input v-model="form.cloudflare_record_name" class="input" placeholder="cdt 或 subdomain.example.com" />
+            <input v-model="form.cloudflare_record_name" class="input" placeholder="subdomain 或 subdomain.example.com" />
           </div>
         </div>
         <div class="text-xs text-text-muted rounded-lg bg-surface px-3 py-2 leading-relaxed">
           填写 Zone 名称后，可直接使用简短记录名，例如 <span class="font-mono text-text">subdomain</span>，
-          系统会自动解析为 <span class="font-mono text-text">subdomain.example.com</span>。
+          系统会自动解析为 <span class="font-mono text-text">{{ cloudflareRecordPreview }}</span>。
         </div>
       </div>
 
@@ -379,6 +379,14 @@ onMounted(async () => {
 const accountMap = computed(() => Object.fromEntries(store.accounts.map(account => [account.id, account])))
 const spotInstances = computed(() => store.instances.filter(instance => instance.is_spot))
 const selectedRotationIds = computed(() => rotationInstanceIds.value.filter(Boolean))
+const cloudflareRecordPreview = computed(() => {
+  const zoneName = form.value.cloudflare_zone_name.trim().replace(/\.$/, '').toLowerCase()
+  const recordName = (form.value.cloudflare_record_name.trim() || 'subdomain').replace(/\.$/, '').toLowerCase()
+  if (!zoneName) return 'subdomain.example.com'
+  if (recordName === '@') return zoneName
+  if (recordName === zoneName || recordName.endsWith(`.${zoneName}`)) return recordName
+  return `${recordName}.${zoneName}`
+})
 
 function instanceOptionLabel(instance) {
   const account = accountMap.value[instance.account_id]
