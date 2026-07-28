@@ -95,35 +95,39 @@
       </div>
     </div>
 
-    <div class="flex flex-wrap content-start gap-2 mt-4 text-xs sm:min-h-[68px]">
-      <span v-if="instance.is_spot"
-        class="px-2.5 py-1 rounded-md bg-surface border border-border text-text-muted font-medium flex items-center gap-1 shadow-sm">
-        <span class="text-accent">⚡</span>
-        抢占式
-      </span>
-      <span v-if="account?.keep_alive && account?.instance_id === instance.instance_id && instance.is_spot"
-        class="px-2.5 py-1 rounded-md bg-accent/10 border border-accent/20 text-accent font-medium flex items-center gap-1.5 shadow-sm">
-        <span class="w-1.5 h-1.5 bg-accent rounded-full animate-ping inline-block"></span>
-        自动保活中
-      </span>
-      <span v-if="rotationPlan"
-        class="px-2.5 py-1 rounded-md font-medium flex items-center gap-1 shadow-sm"
-        :class="rotationPlan.active
-          ? 'bg-success/10 border border-success/20 text-success'
-          : 'bg-accent/10 border border-accent/20 text-accent'"
-        :title="rotationPlan.title">
-        🔁 {{ rotationPlan.label }}
-      </span>
-      <span v-if="account?.auto_stop_time || account?.auto_start_time"
-        class="px-2.5 py-1 rounded-md bg-warning/10 border border-warning/20 text-warning-dark font-medium flex items-center gap-1 shadow-sm">
-        ⏰
-        <span v-if="account?.auto_stop_time">{{ account.auto_stop_time }} 关</span>
-        <span v-if="account?.auto_stop_time && account?.auto_start_time" class="opacity-50 px-0.5">|</span>
-        <span v-if="account?.auto_start_time">{{ account.auto_start_time }} 开</span>
-      </span>
-      <span class="px-2.5 py-1 rounded-md bg-surface border border-border text-text-muted font-medium shadow-sm">
-        {{ account?.shutdown_mode === 'StopCharging' ? '节省停机' : '普通停机' }}
-      </span>
+    <div class="mt-4 text-xs space-y-2">
+      <div class="flex flex-wrap content-start gap-2 min-h-[30px]">
+        <span v-if="instance.is_spot"
+          class="px-2.5 py-1 rounded-md bg-surface border border-border text-text-muted font-medium flex items-center gap-1 shadow-sm">
+          <span class="text-accent">⚡</span>
+          抢占式
+        </span>
+        <span v-if="account?.keep_alive && account?.instance_id === instance.instance_id && instance.is_spot"
+          class="px-2.5 py-1 rounded-md bg-accent/10 border border-accent/20 text-accent font-medium flex items-center gap-1.5 shadow-sm">
+          <span class="w-1.5 h-1.5 bg-accent rounded-full animate-ping inline-block"></span>
+          自动保活中
+        </span>
+      </div>
+      <div class="flex flex-wrap content-start gap-2 min-h-[30px]">
+        <span v-if="rotationPlan"
+          class="px-2.5 py-1 rounded-md font-medium flex items-center gap-1 shadow-sm"
+          :class="rotationPlan.active
+            ? 'bg-success/10 border border-success/20 text-success'
+            : 'bg-accent/10 border border-accent/20 text-accent'"
+          :title="rotationPlan.title">
+          🔁 {{ rotationPlan.label }}
+        </span>
+        <span v-if="account?.auto_stop_time || account?.auto_start_time"
+          class="px-2.5 py-1 rounded-md bg-warning/10 border border-warning/20 text-warning-dark font-medium flex items-center gap-1 shadow-sm">
+          ⏰
+          <span v-if="account?.auto_stop_time">{{ account.auto_stop_time }} 关</span>
+          <span v-if="account?.auto_stop_time && account?.auto_start_time" class="opacity-50 px-0.5">|</span>
+          <span v-if="account?.auto_start_time">{{ account.auto_start_time }} 开</span>
+        </span>
+        <span class="px-2.5 py-1 rounded-md bg-surface border border-border text-text-muted font-medium shadow-sm">
+          {{ account?.shutdown_mode === 'StopCharging' ? '节省停机' : '普通停机' }}
+        </span>
+      </div>
     </div>
 
     <div class="mt-4 min-h-[104px] bg-gradient-to-br from-surface to-surface-hover/50 border border-border/50 rounded-xl px-3.5 py-3 text-xs shadow-sm">
