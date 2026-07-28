@@ -86,7 +86,31 @@
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="text-xs text-text-muted mb-1 block">地域 ID *</label>
-              <input v-model="form.region_id" class="input" placeholder="ap-southeast-1" />
+              <select v-model="regionSelection" class="input" @change="selectRegion">
+                <optgroup
+                  v-for="group in REGION_GROUPS"
+                  :key="group.label"
+                  :label="group.label"
+                >
+                  <option
+                    v-for="region in group.options"
+                    :key="region.id"
+                    :value="region.id"
+                  >
+                    {{ region.name }}
+                  </option>
+                </optgroup>
+                <option value="__custom__">其他地域（手动输入）</option>
+              </select>
+              <input
+                v-if="regionSelection === '__custom__'"
+                v-model.trim="form.region_id"
+                class="input mt-2"
+                placeholder="请输入 Region ID，例如 eu-west-3"
+              />
+              <div class="text-xs text-text-muted mt-1">
+                请选择 ECS 实例所在地域，不是可用区 ID。
+              </div>
             </div>
             <div>
               <label class="text-xs text-text-muted mb-1 block">站点类型</label>
@@ -221,6 +245,52 @@ const deleteTarget = ref(null)
 const submitting = ref(false)
 const formError = ref('')
 
+const REGION_GROUPS = [
+  {
+    label: '中国内地',
+    options: [
+      { id: 'cn-qingdao', name: '中国（青岛）' },
+      { id: 'cn-beijing', name: '中国（北京）' },
+      { id: 'cn-zhangjiakou', name: '中国（张家口）' },
+      { id: 'cn-huhehaote', name: '中国（呼和浩特）' },
+      { id: 'cn-wulanchabu', name: '中国（乌兰察布）' },
+      { id: 'cn-hangzhou', name: '中国（杭州）' },
+      { id: 'cn-shanghai', name: '中国（上海）' },
+      { id: 'cn-wuhan-lr', name: '中国（武汉本地地域）' },
+      { id: 'cn-shenzhen', name: '中国（深圳）' },
+      { id: 'cn-heyuan', name: '中国（河源）' },
+      { id: 'cn-guangzhou', name: '中国（广州）' },
+      { id: 'cn-chengdu', name: '中国（成都）' },
+      { id: 'cn-zhongwei', name: '中国（中卫）' },
+    ],
+  },
+  {
+    label: '中国香港及海外',
+    options: [
+      { id: 'cn-hongkong', name: '中国（香港）' },
+      { id: 'ap-southeast-1', name: '新加坡' },
+      { id: 'ap-southeast-3', name: '马来西亚（吉隆坡）' },
+      { id: 'ap-southeast-5', name: '印度尼西亚（雅加达）' },
+      { id: 'ap-southeast-6', name: '菲律宾（马尼拉）' },
+      { id: 'ap-southeast-7', name: '泰国（曼谷）' },
+      { id: 'ap-southeast-8', name: '马来西亚（柔佛）' },
+      { id: 'ap-northeast-1', name: '日本（东京）' },
+      { id: 'ap-northeast-2', name: '韩国（首尔）' },
+      { id: 'us-west-1', name: '美国（硅谷）' },
+      { id: 'us-east-1', name: '美国（弗吉尼亚）' },
+      { id: 'eu-central-1', name: '德国（法兰克福）' },
+      { id: 'eu-west-1', name: '英国（伦敦）' },
+      { id: 'eu-west-2', name: '法国（巴黎）' },
+      { id: 'me-east-1', name: '阿联酋（迪拜）' },
+      { id: 'me-central-1', name: '沙特阿拉伯（利雅得）' },
+      { id: 'na-south-1', name: '墨西哥' },
+    ],
+  },
+]
+const PRESET_REGION_IDS = new Set(
+  REGION_GROUPS.flatMap(group => group.options.map(region => region.id))
+)
+
 const defaultForm = () => ({
   name: '', access_key_id: '', access_key_secret: '',
   region_id: 'ap-southeast-1', site_type: 'international',
@@ -231,6 +301,7 @@ const defaultForm = () => ({
 })
 
 const form = ref(defaultForm())
+const regionSelection = ref(form.value.region_id)
 const scheduleEnabled = computed(() => Boolean(form.value.auto_stop_time || form.value.auto_start_time))
 
 onMounted(() => Promise.all([
@@ -344,6 +415,7 @@ function nextRotationTime(instanceId) {
 function openAdd() {
   editTarget.value = null
   form.value = defaultForm()
+  regionSelection.value = form.value.region_id
   formError.value = ''
   showForm.value = true
 }
@@ -351,8 +423,19 @@ function openAdd() {
 function openEdit(acc) {
   editTarget.value = acc
   form.value = { ...acc, access_key_secret: '' }
+  regionSelection.value = PRESET_REGION_IDS.has(acc.region_id)
+    ? acc.region_id
+    : '__custom__'
   formError.value = ''
   showForm.value = true
+}
+
+function selectRegion() {
+  if (regionSelection.value === '__custom__') {
+    if (PRESET_REGION_IDS.has(form.value.region_id)) form.value.region_id = ''
+    return
+  }
+  form.value.region_id = regionSelection.value
 }
 
 function clearSchedule() {
@@ -362,7 +445,7 @@ function clearSchedule() {
 
 async function submit() {
   formError.value = ''
-  if (!form.value.name || !form.value.access_key_id) {
+  if (!form.value.name || !form.value.access_key_id || !form.value.region_id) {
     formError.value = '请填写必填项'
     return
   }
