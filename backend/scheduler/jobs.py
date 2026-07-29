@@ -1,6 +1,6 @@
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from html import escape
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -17,7 +17,8 @@ DEFAULT_KEEP_ALIVE_INTERVAL_MINUTES = 5
 MIN_KEEP_ALIVE_INTERVAL_MINUTES = 1
 MAX_KEEP_ALIVE_INTERVAL_MINUTES = 1440
 DEFAULT_ROTATION_SWITCH_TIME = "00:00"
-DEFAULT_ROTATION_GRACE_SECONDS = 90
+DEFAULT_ROTATION_GRACE_SECONDS = 300
+DEFAULT_ROTATION_OVERLAP_SECONDS = 1800
 DEFAULT_ROTATION_TIMEOUT_SECONDS = 600
 DEFAULT_ROTATION_TRAFFIC_PROTECT_GB = 188.0
 
@@ -98,12 +99,19 @@ async def get_rotation_config() -> dict:
         "rotation_active_instance_id",
         "rotation_switch_time",
         "rotation_grace_seconds",
+        "rotation_overlap_seconds",
         "rotation_timeout_seconds",
         "rotation_traffic_protect_gb",
         "rotation_last_switch_date",
         "rotation_last_attempt_at",
         "rotation_last_warning_key",
         "rotation_breaker_latched",
+        "rotation_pending_target_id",
+        "rotation_pending_source_ids",
+        "rotation_pending_record_name",
+        "rotation_pending_ip",
+        "rotation_overlap_until",
+        "rotation_pending_warning_sent",
         "cloudflare_api_token",
         "cloudflare_auth_mode",
         "cloudflare_auth_email",
@@ -120,6 +128,16 @@ async def get_rotation_config() -> dict:
         grace_seconds = max(0, min(600, int(values.get("rotation_grace_seconds", DEFAULT_ROTATION_GRACE_SECONDS))))
     except (TypeError, ValueError):
         grace_seconds = DEFAULT_ROTATION_GRACE_SECONDS
+    try:
+        overlap_seconds = max(
+            300,
+            min(
+                7200,
+                int(values.get("rotation_overlap_seconds", DEFAULT_ROTATION_OVERLAP_SECONDS)),
+            ),
+        )
+    except (TypeError, ValueError):
+        overlap_seconds = DEFAULT_ROTATION_OVERLAP_SECONDS
     try:
         timeout_seconds = max(60, min(900, int(values.get("rotation_timeout_seconds", DEFAULT_ROTATION_TIMEOUT_SECONDS))))
     except (TypeError, ValueError):
@@ -152,6 +170,14 @@ async def get_rotation_config() -> dict:
             if instance_id
         ]
 
+    try:
+        pending_source_ids = json.loads(values.get("rotation_pending_source_ids", "[]"))
+        if not isinstance(pending_source_ids, list):
+            pending_source_ids = []
+        pending_source_ids = [str(instance_id) for instance_id in pending_source_ids if instance_id]
+    except (TypeError, ValueError):
+        pending_source_ids = []
+
     return {
         "enabled": values.get("rotation_enabled") == "1",
         "instance_ids": instance_ids,
@@ -160,12 +186,19 @@ async def get_rotation_config() -> dict:
         "active_instance_id": values.get("rotation_active_instance_id", ""),
         "switch_time": values.get("rotation_switch_time", DEFAULT_ROTATION_SWITCH_TIME),
         "grace_seconds": grace_seconds,
+        "overlap_seconds": overlap_seconds,
         "timeout_seconds": timeout_seconds,
         "traffic_protect_gb": traffic_protect_gb,
         "last_switch_date": values.get("rotation_last_switch_date", ""),
         "last_attempt_at": values.get("rotation_last_attempt_at", ""),
         "last_warning_key": values.get("rotation_last_warning_key", ""),
         "breaker_latched": values.get("rotation_breaker_latched", "0") == "1",
+        "pending_target_id": values.get("rotation_pending_target_id", ""),
+        "pending_source_ids": pending_source_ids,
+        "pending_record_name": values.get("rotation_pending_record_name", ""),
+        "pending_ip": values.get("rotation_pending_ip", ""),
+        "overlap_until": values.get("rotation_overlap_until", ""),
+        "pending_warning_sent": values.get("rotation_pending_warning_sent", "0") == "1",
         "cloudflare_api_token": values.get("cloudflare_api_token", ""),
         "cloudflare_auth_mode": values.get("cloudflare_auth_mode", "token"),
         "cloudflare_auth_email": values.get("cloudflare_auth_email", ""),
@@ -271,6 +304,158 @@ async def sync_cloudflare_ddns(public_ip: str, config: dict, reason: str) -> dic
     return result
 
 
+async def check_public_dns(record_name: str, expected_ip: str) -> tuple[bool, dict]:
+    resolvers = {
+        "Cloudflare": (
+            "https://cloudflare-dns.com/dns-query",
+            {"Accept": "application/dns-json"},
+        ),
+        "Google": (
+            "https://dns.google/resolve",
+            {},
+        ),
+    }
+
+    async def query_resolver(name: str, endpoint: str, headers: dict):
+        try:
+            async with httpx.AsyncClient(timeout=10, headers=headers) as client:
+                response = await client.get(
+                    endpoint,
+                    params={"name": record_name, "type": "A"},
+                )
+                response.raise_for_status()
+                payload = response.json()
+            answers = {
+                str(answer.get("data", "")).strip()
+                for answer in payload.get("Answer", [])
+                if answer.get("type") == 1 and answer.get("data")
+            }
+            return name, sorted(answers)
+        except Exception as exc:
+            return name, [f"查询失败: {exc}"]
+
+    results = await asyncio.gather(
+        *(
+            query_resolver(name, endpoint, headers)
+            for name, (endpoint, headers) in resolvers.items()
+        )
+    )
+    resolved = dict(results)
+    propagated = all(resolved.get(name) == [expected_ip] for name in resolvers)
+    return propagated, resolved
+
+
+async def stop_rotation_sources(source_instance_ids: list[str], timeout_seconds: int) -> list:
+    source_results = []
+    for source_instance_id in source_instance_ids:
+        source_instance, source_account = await get_instance_context(source_instance_id)
+        if not source_instance or not source_account:
+            source_results.append((source_instance_id, False, "实例不存在"))
+            continue
+        try:
+            source_client = aliyun_client_for(source_account)
+            source_status = await source_client.get_instance_status(source_instance_id)
+            source_stop_ok = True
+            if source_status != "Stopped":
+                await source_client.stop_instance(source_instance_id, "StopCharging")
+                source_stop_ok, source_status = await wait_for_instance_status(
+                    source_instance_id,
+                    source_client,
+                    "Stopped",
+                    timeout_seconds,
+                )
+            source_results.append((source_instance_id, source_stop_ok, source_status))
+        except Exception as source_exc:
+            source_results.append((source_instance_id, False, str(source_exc)))
+    return source_results
+
+
+async def clear_pending_rotation() -> None:
+    await set_setting("rotation_pending_target_id", "")
+    await set_setting("rotation_pending_source_ids", "[]")
+    await set_setting("rotation_pending_record_name", "")
+    await set_setting("rotation_pending_ip", "")
+    await set_setting("rotation_overlap_until", "")
+    await set_setting("rotation_pending_warning_sent", "0")
+
+
+async def _complete_pending_rotation_unlocked(config: dict) -> bool:
+    target_instance_id = config.get("pending_target_id", "")
+    latest_config = await get_rotation_config()
+    if (
+        not latest_config.get("enabled")
+        or latest_config.get("pending_target_id") != target_instance_id
+    ):
+        return False
+    config = latest_config
+    source_instance_ids = config.get("pending_source_ids", [])
+    record_name = config.get("pending_record_name", "")
+    expected_ip = config.get("pending_ip", "")
+    if not target_instance_id or not record_name or not expected_ip:
+        return False
+
+    propagated, dns_results = await check_public_dns(record_name, expected_ip)
+    if not propagated:
+        if not config.get("pending_warning_sent"):
+            await set_setting("rotation_pending_warning_sent", "1")
+            await add_log(
+                "warning",
+                "ddns",
+                f"DNS 传播未完成，旧实例继续运行: {record_name} -> {dns_results}",
+            )
+            await send_tg_notify(
+                f"⚠️ <b>DDNS 传播仍未完成</b>\n"
+                f"记录: {escape(record_name)}\n"
+                f"目标 IP: {escape(expected_ip)}\n"
+                f"检查结果: {escape(str(dns_results))}\n"
+                f"保护措施: 旧实例继续运行，系统每分钟重试，不会执行停机"
+            )
+        return False
+
+    source_results = await stop_rotation_sources(
+        source_instance_ids,
+        config["timeout_seconds"],
+    )
+    await clear_pending_rotation()
+
+    target_instance, _ = await get_instance_context(target_instance_id)
+    display_name = (
+        target_instance.remark
+        if target_instance and target_instance.remark
+        else target_instance_id
+    )
+    stop_lines = "\n".join(
+        (
+            f"✅ 已节省停机: {escape(instance_id)}"
+            if ok
+            else f"⚠️ 停机未确认: {escape(instance_id)}（{escape(str(status))}）"
+        )
+        for instance_id, ok, status in source_results
+    ) or "ℹ️ 无需停止其他轮换实例"
+    await send_tg_notify(
+        f"✅ <b>实例换班完成</b>\n"
+        f"当前实例: <b>{escape(display_name)}</b>\n"
+        f"实例 ID: {escape(target_instance_id)}\n"
+        f"公网 IP: {escape(expected_ip)}\n"
+        f"DDNS: {escape(record_name)} → {escape(expected_ip)}\n"
+        f"双机并行: 已达到设定时间且公共 DNS 核验通过\n"
+        f"{stop_lines}"
+    )
+    await add_important_log(
+        "rotation",
+        f"换班完成: {target_instance_id} 当班，DDNS {record_name} -> {expected_ip}，"
+        f"公共 DNS {dns_results}，其他轮换实例状态 {source_results}",
+    )
+    return all(ok for _, ok, _ in source_results)
+
+
+async def complete_pending_rotation(config: dict) -> bool:
+    if rotation_lock.locked():
+        return False
+    async with rotation_lock:
+        return await _complete_pending_rotation_unlocked(config)
+
+
 async def _stop_rotation_instances_unlocked(config: dict, reason: str) -> bool:
     results = []
     for instance_id in config["instance_ids"]:
@@ -300,6 +485,7 @@ async def _stop_rotation_instances_unlocked(config: dict, reason: str) -> bool:
     await set_setting("rotation_active_instance_id", "")
     await set_setting("rotation_last_switch_date", datetime.now().strftime("%Y-%m-%d"))
     await set_setting("rotation_breaker_latched", "1")
+    await clear_pending_rotation()
     await send_tg_notify(
         f"🚨 <b>轮换全局熔断</b>\n"
         f"原因: {escape(reason)}\n"
@@ -357,68 +543,73 @@ async def execute_rotation(target_instance_id: str, reason: str, config: dict | 
                 if not running:
                     raise RuntimeError(f"目标实例启动超时，最终状态 {status}")
 
+            overlap_started_at = datetime.now()
+            if config["grace_seconds"] > 0:
+                await asyncio.sleep(config["grace_seconds"])
+
+            status = await target_client.get_instance_status(target_instance_id)
+            if status != "Running":
+                raise RuntimeError(f"目标实例预热后状态异常: {status}")
+
             details = await update_instance_from_aliyun(target_instance_id, target_client)
             if not details or not details.get("public_ip"):
                 raise RuntimeError("目标实例已运行，但未获取到公网 IP")
 
             ddns = await sync_cloudflare_ddns(details["public_ip"], config, reason)
             ddns_completed = True
-
-            if config["grace_seconds"] > 0:
-                await asyncio.sleep(config["grace_seconds"])
-
-            source_results = []
-            for source_instance_id in source_instance_ids:
-                source_instance, source_account = await get_instance_context(source_instance_id)
-                if not source_instance or not source_account:
-                    source_results.append((source_instance_id, False, "实例不存在"))
-                    continue
-                try:
-                    source_client = aliyun_client_for(source_account)
-                    source_status = await source_client.get_instance_status(source_instance_id)
-                    source_stop_ok = True
-                    if source_status != "Stopped":
-                        await source_client.stop_instance(source_instance_id, "StopCharging")
-                        source_stop_ok, source_status = await wait_for_instance_status(
-                            source_instance_id,
-                            source_client,
-                            "Stopped",
-                            config["timeout_seconds"],
-                        )
-                    source_results.append(
-                        (source_instance_id, source_stop_ok, source_status)
-                    )
-                except Exception as source_exc:
-                    source_results.append((source_instance_id, False, str(source_exc)))
-
+            overlap_until = overlap_started_at + timedelta(seconds=config["overlap_seconds"])
             await set_setting("rotation_active_instance_id", target_instance_id)
             await set_setting("rotation_last_switch_date", datetime.now().strftime("%Y-%m-%d"))
+            await set_setting("rotation_pending_target_id", target_instance_id)
+            await set_setting(
+                "rotation_pending_source_ids",
+                json.dumps(source_instance_ids, ensure_ascii=False),
+            )
+            await set_setting("rotation_pending_record_name", ddns["record_name"])
+            await set_setting("rotation_pending_ip", ddns["new_ip"])
+            await set_setting(
+                "rotation_overlap_until",
+                overlap_until.isoformat(timespec="seconds"),
+            )
+            await set_setting("rotation_pending_warning_sent", "0")
 
+            remaining_seconds = max(
+                0,
+                int((overlap_until - datetime.now()).total_seconds()),
+            )
             display_name = target_instance.remark or target_instance_id
-            stop_lines = "\n".join(
-                (
-                    f"✅ 已节省停机: {escape(instance_id)}"
-                    if ok
-                    else f"⚠️ 停机未确认: {escape(instance_id)}（{escape(str(status))}）"
-                )
-                for instance_id, ok, status in source_results
-            ) or "ℹ️ 无需停止其他轮换实例"
             await send_tg_notify(
-                f"✅ <b>实例换班完成</b>\n"
+                f"🌐 <b>DDNS 已切换，双机保护中</b>\n"
                 f"原因: {escape(reason)}\n"
-                f"当前实例: <b>{escape(display_name)}</b>\n"
+                f"目标实例: <b>{escape(display_name)}</b>\n"
                 f"实例 ID: {escape(target_instance_id)}\n"
                 f"公网 IP: {escape(details['public_ip'])}\n"
                 f"DDNS: {escape(ddns['record_name'])} → {escape(ddns['new_ip'])}\n"
-                f"{stop_lines}"
+                f"新实例预热: {config['grace_seconds']} 秒（已完成）\n"
+                f"双机并行: 至少 {config['overlap_seconds'] // 60} 分钟\n"
+                f"旧实例将在约 {max(1, remaining_seconds // 60)} 分钟后、"
+                f"且公共 DNS 核验通过后才会停机"
             )
             await add_important_log(
                 "rotation",
-                f"换班完成: {target_instance_id} 当班，"
+                f"DDNS 已切换，进入双机保护: {target_instance_id} 当班，"
                 f"DDNS {ddns['record_name']} -> {ddns['new_ip']}，"
-                f"其他轮换实例状态 {source_results}",
+                f"旧实例保留至 {overlap_until.isoformat(timespec='seconds')}",
             )
-            return True
+
+            if remaining_seconds > 0:
+                await asyncio.sleep(remaining_seconds)
+
+            pending_config = {
+                **config,
+                "pending_target_id": target_instance_id,
+                "pending_source_ids": source_instance_ids,
+                "pending_record_name": ddns["record_name"],
+                "pending_ip": ddns["new_ip"],
+                "overlap_until": overlap_until.isoformat(timespec="seconds"),
+                "pending_warning_sent": False,
+            }
+            return await _complete_pending_rotation_unlocked(pending_config)
         except Exception as exc:
             rollback_line = "旧实例未主动停止"
             if target_started_by_rotation and not ddns_completed:
@@ -458,6 +649,15 @@ async def rotation_check(force_reason: str | None = None) -> bool:
     targets = config["instance_ids"]
     if len(targets) < 2 or len(set(targets)) != len(targets):
         return False
+
+    if config.get("pending_target_id"):
+        try:
+            overlap_until = datetime.fromisoformat(config.get("overlap_until", ""))
+        except ValueError:
+            overlap_until = datetime.min
+        if datetime.now() < overlap_until:
+            return False
+        return await complete_pending_rotation(config)
 
     active_id = config["active_instance_id"] or targets[0]
     if active_id not in targets:

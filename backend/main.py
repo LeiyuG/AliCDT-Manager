@@ -25,6 +25,7 @@ from scheduler.jobs import (
     MIN_KEEP_ALIVE_INTERVAL_MINUTES,
     MAX_KEEP_ALIVE_INTERVAL_MINUTES,
     DEFAULT_ROTATION_GRACE_SECONDS,
+    DEFAULT_ROTATION_OVERLAP_SECONDS,
     DEFAULT_ROTATION_TIMEOUT_SECONDS,
     DEFAULT_ROTATION_TRAFFIC_PROTECT_GB,
 )
@@ -377,8 +378,18 @@ async def update_settings(items: List[SettingUpdate], user=Depends(get_current_u
         return value
 
     rotation_grace = parse_rotation_number(
-        "rotation_grace_seconds", DEFAULT_ROTATION_GRACE_SECONDS, 0, 600, "切换缓冲秒数", int
+        "rotation_grace_seconds", DEFAULT_ROTATION_GRACE_SECONDS, 0, 600, "新实例预热秒数", int
     )
+    rotation_overlap = parse_rotation_number(
+        "rotation_overlap_seconds",
+        DEFAULT_ROTATION_OVERLAP_SECONDS,
+        300,
+        7200,
+        "双机并行秒数",
+        int,
+    )
+    if rotation_overlap < rotation_grace:
+        raise HTTPException(status_code=400, detail="双机并行时间不能短于新实例预热时间")
     rotation_timeout = parse_rotation_number(
         "rotation_timeout_seconds", DEFAULT_ROTATION_TIMEOUT_SECONDS, 60, 900, "状态确认超时秒数", int
     )
@@ -454,6 +465,7 @@ async def update_settings(items: List[SettingUpdate], user=Depends(get_current_u
         "rotation_active_instance_id": rotation_active,
         "rotation_switch_time": rotation_time,
         "rotation_grace_seconds": str(rotation_grace),
+        "rotation_overlap_seconds": str(rotation_overlap),
         "rotation_timeout_seconds": str(rotation_timeout),
         "rotation_traffic_protect_gb": str(rotation_protect),
         "cloudflare_auth_mode": cloudflare_auth_mode,
@@ -468,6 +480,15 @@ async def update_settings(items: List[SettingUpdate], user=Depends(get_current_u
     just_enabled = existing_values.get("rotation_enabled", "0") != "1" and rotation_enabled
     if rotation_enabled and (just_enabled or targets_changed):
         submitted_values["rotation_last_switch_date"] = ""
+    if targets_changed or not rotation_enabled:
+        submitted_values.update({
+            "rotation_pending_target_id": "",
+            "rotation_pending_source_ids": "[]",
+            "rotation_pending_record_name": "",
+            "rotation_pending_ip": "",
+            "rotation_overlap_until": "",
+            "rotation_pending_warning_sent": "0",
+        })
 
     for key, submitted_value in submitted_values.items():
         value = submitted_value

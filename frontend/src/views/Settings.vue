@@ -72,7 +72,7 @@
       </div>
 
       <div class="rounded-xl bg-warning/10 border border-warning/20 px-3 py-2 text-xs text-warning-dark leading-relaxed">
-        切换顺序：启动目标实例 → 确认 Running 和公网 IP → 更新 Cloudflare → 等待缓冲 → 节省停机旧实例。
+        切换顺序：启动目标实例 → 确认 Running → 新实例预热 → 更新 Cloudflare → 双机并行保护与 DNS 核验 → 节省停机旧实例。
         启用时会立即按“当前当班实例”校准所选机器的状态。
       </div>
 
@@ -146,9 +146,14 @@
           <div class="text-xs text-text-muted mt-1">当前账号达到该值时，提前切换到备用账号</div>
         </div>
         <div class="min-w-0">
-          <label class="text-xs text-text-muted mb-1.5 block">DDNS 切换缓冲（秒）</label>
+          <label class="text-xs text-text-muted mb-1.5 block">新实例预热（秒）</label>
           <input v-model="form.rotation_grace_seconds" type="number" min="0" max="600" class="input" />
-          <div class="text-xs text-text-muted mt-1">建议 60～120 秒；此期间两台实例会短暂同时运行</div>
+          <div class="text-xs text-text-muted mt-1">新实例确认 Running 后继续等待，完成预热才更新 DDNS</div>
+        </div>
+        <div class="min-w-0">
+          <label class="text-xs text-text-muted mb-1.5 block">双机并行保护（秒）</label>
+          <input v-model="form.rotation_overlap_seconds" type="number" min="300" max="7200" step="60" class="input" />
+          <div class="text-xs text-text-muted mt-1">从新实例开始运行计时；默认 1800 秒。时间未到或 DNS 核验未通过，旧实例不会停机</div>
         </div>
         <div class="min-w-0">
           <label class="text-xs text-text-muted mb-1.5 block">状态确认超时（秒）</label>
@@ -339,7 +344,8 @@ const form = ref({
   rotation_active_instance_id: '',
   rotation_switch_time: '00:00',
   rotation_traffic_protect_gb: '188',
-  rotation_grace_seconds: '90',
+  rotation_grace_seconds: '300',
+  rotation_overlap_seconds: '1800',
   rotation_timeout_seconds: '600',
   cloudflare_auth_mode: 'token',
   cloudflare_api_token: '',
@@ -376,7 +382,8 @@ onMounted(async () => {
   form.value.rotation_active_instance_id = store.settings.rotation_active_instance_id || ''
   form.value.rotation_switch_time = store.settings.rotation_switch_time || '00:00'
   form.value.rotation_traffic_protect_gb = store.settings.rotation_traffic_protect_gb || '188'
-  form.value.rotation_grace_seconds = store.settings.rotation_grace_seconds || '90'
+  form.value.rotation_grace_seconds = store.settings.rotation_grace_seconds || '300'
+  form.value.rotation_overlap_seconds = store.settings.rotation_overlap_seconds || '1800'
   form.value.rotation_timeout_seconds = store.settings.rotation_timeout_seconds || '600'
   form.value.cloudflare_auth_mode = store.settings.cloudflare_auth_mode || 'token'
   form.value.cloudflare_auth_email = store.settings.cloudflare_auth_email || ''
@@ -445,6 +452,17 @@ function settingsItems() {
   if (!Number.isInteger(interval) || interval < 1 || interval > 1440) {
     throw new Error('保活检查间隔必须是 1～1440 之间的整数分钟')
   }
+  const warmupSeconds = Number(form.value.rotation_grace_seconds)
+  if (!Number.isInteger(warmupSeconds) || warmupSeconds < 0 || warmupSeconds > 600) {
+    throw new Error('新实例预热时间必须是 0～600 之间的整数秒')
+  }
+  const overlapSeconds = Number(form.value.rotation_overlap_seconds)
+  if (!Number.isInteger(overlapSeconds) || overlapSeconds < 300 || overlapSeconds > 7200) {
+    throw new Error('双机并行保护必须是 300～7200 之间的整数秒')
+  }
+  if (overlapSeconds < warmupSeconds) {
+    throw new Error('双机并行保护时间不能短于新实例预热时间')
+  }
   const rotationIds = selectedRotationIds.value
   form.value.rotation_instance_ids = JSON.stringify(rotationIds)
   if (form.value.rotation_enabled === '1') {
@@ -489,6 +507,8 @@ function settingsItems() {
     }
   }
   form.value.keep_alive_interval_minutes = String(interval)
+  form.value.rotation_grace_seconds = String(warmupSeconds)
+  form.value.rotation_overlap_seconds = String(overlapSeconds)
   return Object.entries(form.value).map(([key, value]) => ({ key, value: String(value) }))
 }
 
